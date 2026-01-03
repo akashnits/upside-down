@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Environment / Config with secrets
+.env
+.env.local
+*.local
+
+# Extension config (contains your personal GAS URL)
+extension/config.js
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
