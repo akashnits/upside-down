@@ -12,6 +12,8 @@ A Chrome Extension that analyzes LinkedIn job descriptions against your resume u
 - ✅ **High-ROI Fixes** - Actionable checklist before applying
 - 💾 **Save & Track** - Export analysis to GitHub Gist + Google Sheets
 
+> 📖 **[Detailed Setup Instructions →](instructions.md)**
+
 ## Architecture
 
 ```
