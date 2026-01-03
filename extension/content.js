@@ -60,7 +60,7 @@
       background: white;
       border-radius: 16px;
       padding: 25px;
-      max-width: 800px;
+      max-width: 1200px;
       width: 95%;
       max-height: 95vh;
       overflow-y: auto;
@@ -96,15 +96,30 @@
                 const color = analysis.decision === 'APPLY' ? '#155724' : analysis.decision === 'SKIP' ? '#721c24' : '#856404';
                 const bg = analysis.decision === 'APPLY' ? '#d4edda' : analysis.decision === 'SKIP' ? '#f8d7da' : '#fff3cd';
 
+                // Simple markdown to HTML (compact)
+                const formatMarkdown = (md) => {
+                    return md
+                        .replace(/^# (.+)$/gm, '<h2 style="margin:0 0 8px 0; color:#1a1a1a; font-size:17px; border-bottom:2px solid #0A66C2; padding-bottom:6px;">$1</h2>')
+                        .replace(/^## (.+)$/gm, '<h3 style="margin:12px 0 6px 0; color:#0A66C2; font-size:15px; font-weight:600;">$1</h3>')
+                        .replace(/^\*\*(.+?)\*\*$/gm, '<p style="margin:4px 0; font-weight:600; color:#333;">$1</p>')
+                        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                        .replace(/\*(.+?)\*/g, '<em style="color:#666;">$1</em>')
+                        .replace(/^- \[ \] (.+)$/gm, '<div style="margin:3px 0; padding:6px 10px; background:#f0f7ff; border-radius:4px; border-left:3px solid #0A66C2; font-size:13px;">☐ $1</div>')
+                        .replace(/^- (.+)$/gm, '<div style="margin:2px 0; padding:2px 0 2px 12px; border-left:2px solid #e0e0e0; font-size:13px;">$1</div>')
+                        .replace(/^> (.+)$/gm, '<blockquote style="margin:8px 0; padding:8px 10px; background:#fffbeb; border-left:3px solid #f59e0b; font-size:12px; color:#92400e; border-radius:0 4px 4px 0;">$1</blockquote>')
+                        .replace(/---/g, '<hr style="margin:10px 0; border:none; border-top:1px solid #e5e7eb;">')
+                        .replace(/\n\n/g, '<br>');
+                };
+
                 result.innerHTML = `
-          <div style="text-align:center; background:${bg}; color:${color}; padding:15px; border-radius:10px; margin-bottom:15px;">
+          <div style="text-align:center; background:${bg}; color:${color}; padding:15px; border-radius:12px; margin-bottom:15px; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
             <div style="font-size:32px; font-weight:bold;">${emoji} ${analysis.decision}</div>
-            <div style="margin-top:5px;">Confidence: ${analysis.confidence} | Effort: ${analysis.effort} | ATS: ${analysis.atsScore || '?'}%</div>
+            <div style="margin-top:8px; font-size:14px;">Confidence: ${analysis.confidence} | Effort: ${analysis.effort} | ATS: ${analysis.atsScore || '?'}%</div>
           </div>
-          <div style="background:#f9f9f9; padding:15px; border-radius:8px; font-size:14px; max-height:500px; overflow-y:auto; margin-bottom:15px; white-space:pre-wrap; line-height:1.5;">${analysis.markdown.substring(0, 4000)}</div>
+          <div style="background:#fff; padding:20px; border-radius:12px; font-size:14px; max-height:800px; overflow-y:auto; margin-bottom:15px; line-height:1.6; border:1px solid #e5e7eb;">${formatMarkdown(analysis.markdown.substring(0, 5000))}</div>
           <div style="display:flex; gap:10px;">
-            <button id="ud-save" style="flex:1; background:#2563EB; color:white; border:none; padding:12px; border-radius:8px; cursor:pointer; font-weight:600;">💾 Save & Track</button>
-            <button id="ud-discard" style="flex:1; background:#e5e7eb; color:#374151; border:none; padding:12px; border-radius:8px; cursor:pointer;">Discard</button>
+            <button id="ud-save" style="flex:1; background:#0A66C2; color:white; border:none; padding:14px; border-radius:8px; cursor:pointer; font-weight:600; font-size:15px; transition:background 0.2s;">💾 Save & Track</button>
+            <button id="ud-discard" style="flex:1; background:#f3f4f6; color:#374151; border:none; padding:14px; border-radius:8px; cursor:pointer; font-size:15px; transition:background 0.2s;">Discard</button>
           </div>
         `;
 
