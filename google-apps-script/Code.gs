@@ -79,7 +79,12 @@ function getResumeContent() {
 /**
  * Extract keywords from job description using LLM
  */
-function extractKeywords(jdText, apiKey) {
+function extractKeywords(jdText) {
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const apiKey = scriptProperties.getProperty('OPENROUTER_API_KEY');
+  
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY not found in Script Properties (extractKeywords)");
+  
   const prompt = `Extract the required skills, technologies, and qualifications from this job description.
 Return ONLY a JSON array of keywords/phrases. Example: ["Python", "AWS", "5+ years experience", "Machine Learning"]
 
@@ -99,11 +104,15 @@ ${jdText}`;
   const options = {
     method: "post",
     contentType: "application/json",
-    headers: { "Authorization": `Bearer ${apiKey}` },
+    headers: { 
+      "Authorization": `Bearer ${apiKey}`,
+      "HTTP-Referer": "https://github.com/akashnits/upside-down", // Required by OpenRouter
+      "X-Title": "Upside Down Extension"
+    },
     payload: JSON.stringify(payload)
   };
 
-  const response = UrlFetchApp.fetch(CONFIG.MISTRAL_API_URL, options);
+  const response = UrlFetchApp.fetch(CONFIG.OPENROUTER_API_URL, options);
   const data = JSON.parse(response.getContentText());
   let jsonText = data.choices[0].message.content;
   
@@ -214,11 +223,13 @@ function calculateATSScore(keywords, resumeText) {
  * Get API key from https://console.mistral.ai
  */
 function analyzeJob(jdText, resumeText) {
-  const apiKey = PROPERTIES.getProperty("MISTRAL_API_KEY");
-  if (!apiKey) throw new Error("MISTRAL_API_KEY not set in Script Properties");
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const apiKey = scriptProperties.getProperty('OPENROUTER_API_KEY');
+  
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY not found in Script Properties");
 
   // Step 1: Extract keywords and calculate real ATS score
-  const keywords = extractKeywords(jdText, apiKey);
+  const keywords = extractKeywords(jdText);
   const ats = calculateATSScore(keywords, resumeText);
   Logger.log(`[ATS] Score: ${ats.score}% (${ats.matched.length}/${keywords.length} keywords)`);
 
@@ -262,7 +273,7 @@ The Markdown Insight Card MUST follow this structure EXACTLY (DO NOT include Dec
 
 ---
 
-## �🚫 Likely Rejection Reasons
+## 🚫 Likely Rejection Reasons
 *(What may cause a recruiter to pass in the first scan)*
 
 - [Reason 1]
@@ -292,7 +303,7 @@ The Markdown Insight Card MUST follow this structure EXACTLY (DO NOT include Dec
 - **Role:** [Role Name]
 - **Analyzed On:** [Today's Date]`;
 
-  const url = CONFIG.MISTRAL_API_URL;
+  // 2. Call LLM for Analysis
   const payload = {
     model: CONFIG.MODELS.MAIN_ANALYSIS,
     messages: [
@@ -306,11 +317,15 @@ The Markdown Insight Card MUST follow this structure EXACTLY (DO NOT include Dec
   const options = {
     method: "post",
     contentType: "application/json",
-    headers: { "Authorization": `Bearer ${apiKey}` },
+    headers: { 
+      "Authorization": `Bearer ${apiKey}`,
+      "HTTP-Referer": "https://github.com/akashnits/upside-down",
+      "X-Title": "Upside Down Extension"
+    },
     payload: JSON.stringify(payload)
   };
 
-  const response = UrlFetchApp.fetch(url, options);
+  const response = UrlFetchApp.fetch(CONFIG.OPENROUTER_API_URL, options);
   const data = JSON.parse(response.getContentText());
   let jsonString = data.choices[0].message.content;
   

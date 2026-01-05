@@ -1,13 +1,13 @@
 // Configuration - Constants (safe to commit)
 const CONFIG = {
   // API Endpoints
-  MISTRAL_API_URL: "https://api.mistral.ai/v1/chat/completions",
+  OPENROUTER_API_URL: "https://openrouter.ai/api/v1/chat/completions",
   GITHUB_API_URL: "https://api.github.com/gists",
   
-  // Model Settings
+  // Model Settings (via OpenRouter)
   MODELS: {
-    KEYWORD_EXTRACTION: "mistral-small-latest",
-    MAIN_ANALYSIS: "mistral-large-latest"
+    KEYWORD_EXTRACTION: "google/gemini-2.5-flash", // Very fast
+    MAIN_ANALYSIS: "google/gemini-2.5-flash"      // Balanced speed/quality
   },
   
   // Analysis Settings
@@ -24,7 +24,7 @@ const CONFIG = {
 /**
  * Required Script Properties (set in Apps Script > Project Settings > Script Properties):
  * 
- * - MISTRAL_API_KEY   : Get from https://console.mistral.ai
+ * - OPENROUTER_API_KEY: Get from https://openrouter.ai/keys
  * - GITHUB_TOKEN      : GitHub PAT with 'gist' scope
  * - RESUME_DOC_ID     : Google Doc ID containing your resume
  * - SHEET_ID          : (Optional) Google Sheet ID for logging
