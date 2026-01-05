@@ -249,14 +249,40 @@
     }
 
     // Extract job data from DOM
+    // Extract job data from DOM
     function scrapeJob() {
+        const getText = (selectors) => {
+            for (const selector of selectors) {
+                const el = document.querySelector(selector);
+                if (el && el.innerText.trim()) return el.innerText.trim();
+            }
+            return null;
+        };
+
         return {
-            role: document.querySelector('.job-details-jobs-unified-top-card__job-title')?.innerText?.trim() ||
-                document.querySelector('.jobs-unified-top-card__job-title')?.innerText?.trim() || "Unknown Role",
-            company: document.querySelector('.job-details-jobs-unified-top-card__company-name')?.innerText?.trim() ||
-                document.querySelector('.jobs-unified-top-card__company-name')?.innerText?.trim() || "Unknown Company",
-            jobDescription: document.querySelector('#job-details')?.innerText ||
-                document.querySelector('.jobs-description')?.innerText || "",
+            role: getText([
+                '.job-details-jobs-unified-top-card__job-title', // Collections view
+                '.jobs-unified-top-card__job-title', // Standard view
+                '.t-24.t-bold.jobs-unified-top-card__job-title', // Variant
+                '[class*="job-title"]', // Generic fallback
+                'h1' // Last resort
+            ]) || "Unknown Role",
+
+            company: getText([
+                '.job-details-jobs-unified-top-card__company-name',
+                '.jobs-unified-top-card__company-name',
+                '.jobs-unified-top-card__company-name a',
+                '[class*="company-name"]'
+            ]) || "Unknown Company",
+
+            jobDescription: getText([
+                '#job-details', // Standard
+                '.jobs-description', // Variant
+                '.jobs-description-content__text', // Search view
+                '.jobs-box__html-content', // Legacy
+                '[class*="description"] [class*="content"]' // Generic fallback
+            ]) || "",
+
             jobUrl: window.location.href
         };
     }
