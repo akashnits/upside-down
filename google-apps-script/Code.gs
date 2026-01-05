@@ -76,14 +76,26 @@ function getResumeContent() {
 }
 
 
+// 1. HELPER: Get Current Provider Configuration
+function getProviderConfig() {
+  const scriptProperties = PropertiesService.getScriptProperties();
+  // Allow runtime switching via Script Properties without redeploying
+  const providerName = scriptProperties.getProperty('PROVIDER') || CONFIG.PROVIDER;
+  
+  const provider = CONFIG.PROVIDERS[providerName];
+  if (!provider) throw new Error(`Invalid PROVIDER setting: ${providerName}. Check Script Properties or config.gs.`);
+  return provider;
+}
+
 /**
  * Extract keywords from job description using LLM
  */
 function extractKeywords(jdText) {
+  const provider = getProviderConfig();
   const scriptProperties = PropertiesService.getScriptProperties();
-  const apiKey = scriptProperties.getProperty('OPENROUTER_API_KEY');
+  const apiKey = scriptProperties.getProperty(provider.API_KEY_PROP);
   
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY not found in Script Properties (extractKeywords)");
+  if (!apiKey) throw new Error(`${provider.API_KEY_PROP} not found in Script Properties`);
   
   const prompt = `Extract the required skills, technologies, and qualifications from this job description.
 Return ONLY a JSON array of keywords/phrases. Example: ["Python", "AWS", "5+ years experience", "Machine Learning"]
@@ -92,7 +104,7 @@ JOB DESCRIPTION:
 ${jdText}`;
 
   const payload = {
-    model: CONFIG.MODELS.KEYWORD_EXTRACTION,
+    model: provider.MODELS.KEYWORD_EXTRACTION,
     messages: [
       { role: "system", content: "Extract keywords. Return only a JSON object with a 'keywords' array, nothing else." },
       { role: "user", content: prompt }
@@ -112,7 +124,7 @@ ${jdText}`;
     payload: JSON.stringify(payload)
   };
 
-  const response = UrlFetchApp.fetch(CONFIG.OPENROUTER_API_URL, options);
+  const response = UrlFetchApp.fetch(provider.API_URL, options);
   const data = JSON.parse(response.getContentText());
   let jsonText = data.choices[0].message.content;
   
@@ -223,10 +235,11 @@ function calculateATSScore(keywords, resumeText) {
  * Get API key from https://console.mistral.ai
  */
 function analyzeJob(jdText, resumeText) {
+  const provider = getProviderConfig();
   const scriptProperties = PropertiesService.getScriptProperties();
-  const apiKey = scriptProperties.getProperty('OPENROUTER_API_KEY');
+  const apiKey = scriptProperties.getProperty(provider.API_KEY_PROP);
   
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY not found in Script Properties");
+  if (!apiKey) throw new Error(`${provider.API_KEY_PROP} not found in Script Properties`);
 
   // Step 1: Extract keywords and calculate real ATS score
   const keywords = extractKeywords(jdText);
@@ -303,9 +316,8 @@ The Markdown Insight Card MUST follow this structure EXACTLY (DO NOT include Dec
 - **Role:** [Role Name]
 - **Analyzed On:** [Today's Date]`;
 
-  // 2. Call LLM for Analysis
   const payload = {
-    model: CONFIG.MODELS.MAIN_ANALYSIS,
+    model: provider.MODELS.MAIN_ANALYSIS,
     messages: [
       { role: "system", content: "You are a career coach. Always respond with valid JSON only, no markdown code blocks." },
       { role: "user", content: prompt }
@@ -325,7 +337,7 @@ The Markdown Insight Card MUST follow this structure EXACTLY (DO NOT include Dec
     payload: JSON.stringify(payload)
   };
 
-  const response = UrlFetchApp.fetch(CONFIG.OPENROUTER_API_URL, options);
+  const response = UrlFetchApp.fetch(provider.API_URL, options);
   const data = JSON.parse(response.getContentText());
   let jsonString = data.choices[0].message.content;
   

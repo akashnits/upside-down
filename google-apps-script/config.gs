@@ -1,22 +1,37 @@
 // Configuration - Constants (safe to commit)
 const CONFIG = {
-  // API Endpoints
-  OPENROUTER_API_URL: "https://openrouter.ai/api/v1/chat/completions",
+  // --- 🎛️ Provider Selection ---
+  // Options: "GEMINI" or "MISTRAL" (Both via OpenRouter)
+  PROVIDER: "GEMINI", 
+
+  // --- 🛠️ Provider Settings ---
+  PROVIDERS: {
+    GEMINI: {
+      API_URL: "https://openrouter.ai/api/v1/chat/completions",
+      API_KEY_PROP: "OPENROUTER_API_KEY", // Single key for everything
+      MODELS: {
+        KEYWORD_EXTRACTION: "google/gemini-2.5-flash",
+        MAIN_ANALYSIS: "google/gemini-2.5-flash"
+      }
+    },
+    MISTRAL: {
+      API_URL: "https://openrouter.ai/api/v1/chat/completions",
+      API_KEY_PROP: "OPENROUTER_API_KEY", // Single key for everything
+      MODELS: {
+        KEYWORD_EXTRACTION: "mistralai/devstral-2512:free",
+        MAIN_ANALYSIS: "mistralai/devstral-2512:free"
+      }
+    }
+  },
+
+  // --- 🔗 Other APIs ---
   GITHUB_API_URL: "https://api.github.com/gists",
   
-  // Model Settings (via OpenRouter)
-  MODELS: {
-    KEYWORD_EXTRACTION: "google/gemini-2.5-flash", // Very fast
-    MAIN_ANALYSIS: "google/gemini-2.5-flash"      // Balanced speed/quality
-  },
-  
-  // Analysis Settings
+  // --- ⚙️ Global Settings ---
   TEMPERATURE: {
     KEYWORD_EXTRACTION: 0,
     MAIN_ANALYSIS: 0.3
   },
-  
-  // Display Limits
   MAX_KEYWORDS_DISPLAY: 8,
   MAX_MARKDOWN_LENGTH: 4000
 };
