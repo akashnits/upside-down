@@ -109,7 +109,7 @@ ${saveResponse.gistUrl}`;
                             console.error('[Upside Down] Failed to copy to clipboard:', err);
                         });
 
-                        panel.showSuccess(saveResponse.gistUrl); // Legacy parameter, no longer used by UI UI but kept for safety
+                        panel.showSuccess(promptText);
                     } else {
                         panel.showError(saveResponse?.error || 'Save failed');
                     }

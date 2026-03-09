@@ -106,7 +106,7 @@ function createPanel() {
                 </div>
                 <div style="display:flex; gap:10px; padding-bottom:20px;">
                     <button id="ud-save" style="flex:1; background:#0A66C2; color:white; border:none; padding:12px; border-radius:8px; cursor:pointer; font-weight:600; font-size:14px; transition:background 0.2s;"
-                        onmouseover="this.style.background='#084e96'" onmouseout="this.style.background='#0A66C2'">💾 Save & Track</button>
+                        onmouseover="this.style.background='#084e96'" onmouseout="this.style.background='#0A66C2'">✨ Create</button>
                     <button id="ud-discard" style="flex:1; background:#f3f4f6; color:#374151; border:none; padding:12px; border-radius:8px; cursor:pointer; font-size:14px; transition:background 0.2s;"
                         onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='#f3f4f6'">Discard</button>
                 </div>
@@ -146,17 +146,38 @@ function createPanel() {
             }, 1500);
         },
 
-        showSuccess: (gistUrl) => {
+        showSuccess: (promptText) => {
             if (window.udSaveInterval) clearInterval(window.udSaveInterval);
 
             const result = document.getElementById('ud-result');
             result.innerHTML = `
-                <div style="text-align:center; padding:40px 20px;">
-                    <div style="font-size:60px; margin-bottom:15px;">🎉</div>
-                    <h3 style="margin:0 0 10px 0; color:#155724;">Saved!</h3>
-                    <a href="${gistUrl}" target="_blank" style="color:#2563EB; font-weight:600; text-decoration:none;">View Insight Card →</a>
+                <div style="text-align:center; padding:20px 20px 10px;">
+                    <div style="font-size:40px; margin-bottom:10px;">🎉</div>
+                    <h3 style="margin:0 0 10px 0; color:#155724;">Saved to Tracker!</h3>
+                    <div style="color:#666; font-size:13px; margin-bottom:15px;">Paste the prompt below into Cowork to tailor your resume.</div>
+                </div>
+                
+                <div style="position:relative; background:#f8f9fa; border:1px solid #e5e7eb; border-radius:8px; padding:16px; margin:0 0 20px 0; text-align:left;">
+                    <button id="ud-copy-prompt" style="position:absolute; top:8px; right:8px; background:white; border:1px solid #d1d5db; border-radius:4px; padding:4px 8px; cursor:pointer; font-size:12px; color:#374151; transition:all 0.15s; font-weight:500;" title="Copy to clipboard">
+                        Copy
+                    </button>
+                    <pre style="margin:0; font-family:Menlo, Monaco, Consolas, monospace; font-size:11px; color:#1f2937; white-space:pre-wrap; word-break:break-word; max-height:180px; overflow-y:auto; padding-top:10px;">${promptText}</pre>
                 </div>
             `;
+
+            document.getElementById('ud-copy-prompt').addEventListener('click', function() {
+                navigator.clipboard.writeText(promptText).then(() => {
+                    const btn = this;
+                    btn.textContent = '✓ Copied';
+                    btn.style.color = '#10b981';
+                    btn.style.borderColor = '#10b981';
+                    setTimeout(() => {
+                        btn.textContent = 'Copy';
+                        btn.style.color = '#374151';
+                        btn.style.borderColor = '#d1d5db';
+                    }, 2000);
+                });
+            });
         },
 
         showError: (msg) => {
