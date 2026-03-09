@@ -158,8 +158,14 @@ function createPanel() {
                 </div>
                 
                 <div style="position:relative; background:#f8f9fa; border:1px solid #e5e7eb; border-radius:8px; padding:16px; margin:0 0 20px 0; text-align:left;">
-                    <button id="ud-copy-prompt" style="position:absolute; top:8px; right:8px; background:white; border:1px solid #d1d5db; border-radius:4px; padding:4px 8px; cursor:pointer; font-size:12px; color:#374151; transition:all 0.15s; font-weight:500;" title="Copy to clipboard">
-                        Copy
+                    <button id="ud-copy-prompt" style="position:absolute; top:8px; right:8px; background:white; border:1px solid #d1d5db; border-radius:4px; width:28px; height:28px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#6b7280; transition:all 0.15s;" title="Copy to clipboard">
+                        <svg id="ud-icon-copy" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                        <svg id="ud-icon-check" style="display:none;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
                     </button>
                     <pre style="margin:0; font-family:Menlo, Monaco, Consolas, monospace; font-size:11px; color:#1f2937; white-space:pre-wrap; word-break:break-word; max-height:180px; overflow-y:auto; padding-top:10px;">${promptText}</pre>
                 </div>
@@ -168,12 +174,18 @@ function createPanel() {
             document.getElementById('ud-copy-prompt').addEventListener('click', function() {
                 navigator.clipboard.writeText(promptText).then(() => {
                     const btn = this;
-                    btn.textContent = '✓ Copied';
+                    const iconCopy = document.getElementById('ud-icon-copy');
+                    const iconCheck = document.getElementById('ud-icon-check');
+                    
+                    iconCopy.style.display = 'none';
+                    iconCheck.style.display = 'block';
                     btn.style.color = '#10b981';
                     btn.style.borderColor = '#10b981';
+                    
                     setTimeout(() => {
-                        btn.textContent = 'Copy';
-                        btn.style.color = '#374151';
+                        iconCopy.style.display = 'block';
+                        iconCheck.style.display = 'none';
+                        btn.style.color = '#6b7280';
                         btn.style.borderColor = '#d1d5db';
                     }, 2000);
                 });
