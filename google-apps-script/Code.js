@@ -376,13 +376,7 @@ function saveToNotion(data) {
   const payload = {
     parent: { database_id: dbId },
     properties: {
-      "Company": { title: [{ text: { content: data.company || "Unknown" } }] },
-      "Role": { rich_text: [{ text: { content: data.role || "Unknown" } }] },
-      "Decision": { select: { name: analysis.decision || "MAYBE" } },
-      "Confidence": { select: { name: analysis.confidence || "MEDIUM" } },
-      "Link": { url: data.jobUrl || "" },
-      "Status": { select: { name: "To Review" } },
-      "Date Added": { date: { start: new Date().toISOString().split('T')[0] } }
+      "Name": { title: [{ text: { content: `${data.company || "Unknown"} - ${data.role || "Unknown"}` } }] }
     },
     children: blocks
   };
