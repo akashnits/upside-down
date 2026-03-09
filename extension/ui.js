@@ -119,10 +119,10 @@ function createPanel() {
         setSaveLoading: () => {
             const result = document.getElementById('ud-result');
             const messages = [
-                'Creating GitHub Gist...',
-                'Saving to Google Sheets...',
-                'Logging analysis...',
-                'Almost done...'
+                "Saving to Notion...",
+                "Creating Drive folder...",
+                "Duplicating base resume...",
+                "Generating prompt..."
             ];
 
             result.innerHTML = `

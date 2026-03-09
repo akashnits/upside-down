@@ -45,17 +45,27 @@ function doPost(e) {
         throw new Error("Gist creation failed.");
       }
 
-      // 4. Save to Notion (Visual Tracker)
+      // 4. Duplicate Resume for Tailoring
+      let newResumeUrl = "";
+      try {
+        newResumeUrl = duplicateResume(data.role, data.company);
+        Logger.log(`[INFO] Created tailored resume draft: ${newResumeUrl}`);
+      } catch (err) {
+        Logger.log(`[ERROR] Resume duplication failed: ${err.toString()}`);
+      }
+
+      // 5. Save to Notion (Visual Tracker)
       let pageUrl = "";
       try {
-        data.gistUrl = gistUrl; // Pass it along to inject into Notion
+        data.gistUrl = gistUrl; 
+        data.resumeUrl = newResumeUrl; // Inject duplicated resume URL into Notion
         pageUrl = saveToNotion(data);
         Logger.log(`[INFO] Saved to Notion Tracker: ${pageUrl}`);
       } catch (err) {
         Logger.log(`[WARN] Notion save failed, falling back to Sheet: ${err.toString()}`);
       }
 
-      // 5. Log to Sheet (Optional Secondary tracking)
+      // 6. Log to Sheet (Optional Secondary tracking)
       logToSheet({
         company: data.company,
         role: data.role,
@@ -71,7 +81,7 @@ function doPost(e) {
           success: true,
           gistUrl: gistUrl, 
           notionUrl: pageUrl,
-          resumeUrl: PROPERTIES.getProperty("RESUME_DOC_ID") ? `https://docs.google.com/document/d/${PROPERTIES.getProperty("RESUME_DOC_ID")}/edit` : ""
+          resumeUrl: newResumeUrl || (PROPERTIES.getProperty("RESUME_DOC_ID") ? `https://docs.google.com/document/d/${PROPERTIES.getProperty("RESUME_DOC_ID")}/edit` : "")
         }),
       ).setMimeType(ContentService.MimeType.JSON);
     }
@@ -93,6 +103,30 @@ function getResumeContent() {
   const docId = PROPERTIES.getProperty("RESUME_DOC_ID");
   if (!docId) throw new Error("RESUME_DOC_ID not set in Script Properties");
   return DocumentApp.openById(docId).getBody().getText();
+}
+
+/**
+ * Duplicates the Base Resume into a new Drive folder
+ * Returns the URL of the new document.
+ */
+function duplicateResume(role, company) {
+  const baseDocId = PROPERTIES.getProperty("RESUME_DOC_ID");
+  if (!baseDocId) return "";
+
+  try {
+    const baseFile = DriveApp.getFileById(baseDocId);
+    // Sanitize folder name
+    const folderName = `${role || "Unknown"}_${company || "Unknown"}`.replace(/[^a-zA-Z0-9 _-]/g, '');
+    const folder = DriveApp.createFolder(folderName);
+    
+    // Create copy inside the new folder
+    const newFile = baseFile.makeCopy(`Tailored Resume - ${folderName}`, folder);
+    
+    return newFile.getUrl(); // e.g., https://docs.google.com/document/d/ID/edit
+  } catch (err) {
+    Logger.log(`[ERROR] Failed to duplicate resume: ${err.toString()}`);
+    return "";
+  }
 }
 
 // 1. HELPER: Get Current Provider Configuration
@@ -380,6 +414,7 @@ function saveToNotion(data, isRetry = false) {
       "Job Link": { url: data.jobUrl || "" },
       "Job ID": { rich_text: [{ text: { content: data.jobId || "Unknown" } }] },
       "Gist Link": { url: data.gistUrl || "" },
+      "Resume Link": { url: data.resumeUrl || "" },
       "Status": { select: { name: "To Review" } },
       "Date": { date: { start: new Date().toISOString().split('T')[0] } }
     }

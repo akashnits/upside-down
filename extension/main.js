@@ -94,10 +94,10 @@
                 }, (saveResponse) => {
                     if (saveResponse?.success) {
                         // Assemble Cowork Prompt
-                        const promptText = `Please act as an expert Executive Resume Writer and help me tailor my resume for the ${jobData.role} position at ${jobData.company} (Notion Job ID: ${jobData.jobId}).
+                        const promptText = `Please act as an expert Executive Resume Writer and help me tailor my resume for the ${jobData.role} position at ${jobData.company}.
 
 Here is the context:
-1. Base Resume: ${saveResponse.resumeUrl || "[Attach Resume .docx]"}
+1. Resume Draft Link: ${saveResponse.resumeUrl || "[Attach Resume .docx]"}
 2. Job Analysis Data: 
 """
 ${analysis.markdown}
@@ -110,12 +110,7 @@ Task Requirements & Execution Rules:
 
 2. PRESERVE EXPERIENCE & FORMATTING:
    - Do NOT abbreviate, fabricate, or hallucinate work experience to force a missing keyword. Every keyword added must be contextually plausible based on my background.
-   - You MUST use the 'docx' skill to maintain the exact same design, fonts, margins, header styles, and bullet layout structure as the base resume file.
-
-Output & Automation Steps:
-1. Generate New Document: Execute the rewrites and generate a brand new \`.docx\` file. NEVER overwrite or save changes directly to the original base resume link.
-2. Save to Google Drive: Create a folder in my Google Drive named EXACTLY \`${jobData.role}_${jobData.company}\`. Save the newly tailored \`.docx\` resume into this folder.
-3. Update Notion Tracker: Search my Notion Job Tracker database using the exact Job ID: \`${jobData.jobId}\`. Update that row's "Resume Link" property with the Google Drive share link to the newly tailored file.`;
+   - You MUST use the 'docx' skill to maintain the exact same design, fonts, margins, header styles, and bullet layout structure as the provided resume draft.`;
 
                         // Copy to clipboard
                         navigator.clipboard.writeText(promptText).then(() => {
