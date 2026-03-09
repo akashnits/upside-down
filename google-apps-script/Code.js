@@ -347,6 +347,70 @@ The Markdown Insight Card MUST follow this structure EXACTLY (DO NOT include Dec
 }
 
 /**
+ * Create a page in the Notion ATS Database
+ */
+function saveToNotion(data) {
+  const token = PROPERTIES.getProperty("NOTION_API_KEY");
+  const dbId = PROPERTIES.getProperty("NOTION_DB_ID");
+  
+  if (!token || !dbId) throw new Error("NOTION_API_KEY or NOTION_DB_ID not set");
+
+  const analysis = data.analysis;
+  const blocks = [];
+
+  // Split markdown into 2000-char chunks as per Notion limits
+  const md = analysis.markdown || "No analysis provided.";
+  const chunks = md.match(/.{1,2000}/g) || [md];
+
+  chunks.forEach(chunk => {
+    blocks.push({
+      object: "block",
+      type: "code",
+      code: {
+        language: "markdown",
+        rich_text: [{ text: { content: chunk } }]
+      }
+    });
+  });
+
+  const payload = {
+    parent: { database_id: dbId },
+    properties: {
+      "Company": { title: [{ text: { content: data.company || "Unknown" } }] },
+      "Role": { rich_text: [{ text: { content: data.role || "Unknown" } }] },
+      "Decision": { select: { name: analysis.decision || "MAYBE" } },
+      "Confidence": { select: { name: analysis.confidence || "MEDIUM" } },
+      "Link": { url: data.jobUrl || "" },
+      "Status": { select: { name: "To Review" } },
+      "Date Added": { date: { start: new Date().toISOString().split('T')[0] } }
+    },
+    children: blocks
+  };
+
+  const options = {
+    method: "post",
+    contentType: "application/json",
+    headers: { 
+      "Authorization": `Bearer ${token}`,
+      "Notion-Version": CONFIG.NOTION_VERSION
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+
+  const response = UrlFetchApp.fetch(CONFIG.NOTION_API_URL, options);
+  const responseCode = response.getResponseCode();
+  const responseData = JSON.parse(response.getContentText());
+
+  if (responseCode !== 200) {
+    throw new Error(`Notion API Error (${responseCode}): ${JSON.stringify(responseData)}`);
+  }
+
+  // Return the shiny new Notion page URL
+  return responseData.url;
+}
+
+/**
  * Create a Private GitHub Gist
  */
 function createGist(markdownContent, company, role) {
