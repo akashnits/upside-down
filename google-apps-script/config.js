@@ -1,5 +1,6 @@
 // Configuration - Constants (safe to commit)
 const CONFIG = {
+  CVS_ROOT_FOLDER_ID: "18fYuakVsUgXpKsqAFcJfCy8Ns4DVSSTY",
   // --- 🎛️ Provider Selection ---
   // Options: "GEMINI" or "MISTRAL" (Both via OpenRouter)
   PROVIDER: "GEMINI",

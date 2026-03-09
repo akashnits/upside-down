@@ -119,9 +119,8 @@ function duplicateResume(role, company, jobId) {
     const sanitizedCompany = (company || "Unknown").replace(/[^a-zA-Z0-9 _-]/g, '');
     const folderName = `${role || "Unknown"}_${jobId || "Unknown"}`.replace(/[^a-zA-Z0-9 _-]/g, '');
     
-    // Find or create "Akash CVs" root folder
-    let rootIter = DriveApp.getFoldersByName("Akash CVs");
-    let rootFolder = rootIter.hasNext() ? rootIter.next() : DriveApp.createFolder("Akash CVs");
+    // Access "Akash CVs" root folder directly
+    let rootFolder = DriveApp.getFolderById(CONFIG.CVS_ROOT_FOLDER_ID);
     
     // Find or create Company folder inside Root
     let companyIter = rootFolder.getFoldersByName(sanitizedCompany);
