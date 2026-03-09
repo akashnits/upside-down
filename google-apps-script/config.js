@@ -23,6 +23,8 @@ const CONFIG = {
   },
 
   // --- 🔗 Other APIs ---
+  NOTION_API_URL: "https://api.notion.com/v1/pages",
+  NOTION_VERSION: "2022-06-28",
   GITHUB_API_URL: "https://api.github.com/gists",
 
   // --- ⚙️ Global Settings ---

@@ -35,18 +35,24 @@ function doPost(e) {
       // Expects: data.analysis (object), data.company, data.role, data.jobUrl
       const analysis = data.analysis;
 
-      // 3. Create Gist
-      const gistUrl = createGist(analysis.markdown, data.company, data.role);
-      Logger.log(`[INFO] Gist created: ${gistUrl}`);
+      // 3. Save to Notion (Primary)
+      let pageUrl = "";
+      try {
+        pageUrl = saveToNotion(data);
+        Logger.log(`[INFO] Saved to Notion: ${pageUrl}`);
+      } catch (err) {
+        Logger.log(`[WARN] Notion save failed, falling back to Gist: ${err.toString()}`);
+        pageUrl = createGist(analysis.markdown, data.company, data.role);
+      }
 
-      // 4. Log to Sheet
+      // 4. Log to Sheet (Fallback/Secondary tracking)
       logToSheet({
         company: data.company,
         role: data.role,
         decision: analysis.decision,
         confidence: analysis.confidence,
         effort: analysis.effort,
-        gistUrl: gistUrl,
+        gistUrl: pageUrl,
         jobUrl: data.jobUrl,
       });
       Logger.log(`[SUCCESS] Logged to sheet`);
@@ -54,7 +60,7 @@ function doPost(e) {
       return ContentService.createTextOutput(
         JSON.stringify({
           success: true,
-          gistUrl: gistUrl,
+          gistUrl: pageUrl, // keeping key as gistUrl so extension doesn't break yet
         }),
       ).setMimeType(ContentService.MimeType.JSON);
     }
