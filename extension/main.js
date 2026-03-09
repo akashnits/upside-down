@@ -98,7 +98,10 @@
 
 Here is the context:
 1. Base Resume: ${saveResponse.resumeUrl || "[Attach Resume .docx]"}
-2. Job Analysis Data: ${saveResponse.gistUrl}
+2. Job Analysis Data: 
+"""
+${analysis.markdown}
+"""
 
 Task Requirements & Execution Rules:
 1. TARGETED EDITS ONLY: Only modify two sections of the document:
