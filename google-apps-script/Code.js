@@ -101,7 +101,6 @@ function calculateATSScore(keywords, resumeText) {
   const matched = [];
   const missing = [];
 
-  // Common abbreviation mappings (bidirectional)
   const synonyms = {
     javascript: ["js", "javascript", "ecmascript"],
     typescript: ["ts", "typescript"],
@@ -122,27 +121,25 @@ function calculateATSScore(keywords, resumeText) {
     "next.js": ["next", "nextjs", "next.js"],
     graphql: ["graphql", "gql"],
     "rest api": ["rest", "restful", "rest api", "restful api"],
-    "ci/cd": [
-      "ci/cd",
-      "cicd",
-      "continuous integration",
-      "continuous deployment",
-    ],
+    "ci/cd": ["ci/cd", "cicd", "continuous integration", "continuous deployment"],
     docker: ["docker", "containerization"],
     terraform: ["terraform", "iac", "infrastructure as code"],
     agile: ["agile", "scrum", "kanban"],
     "user experience": ["ux", "user experience"],
     "user interface": ["ui", "user interface"],
-    "software development": [
-      "software engineering",
-      "software development",
-      "swe",
-    ],
+    "software development": ["software engineering", "software development", "swe"],
     bachelor: ["bachelor", "bachelors", "bachelor's", "bs", "b.s.", "bsc"],
     master: ["master", "masters", "master's", "ms", "m.s.", "msc"],
+
+    // Modern Backend & AI groupings
+    "system design": ["system design", "systems design", "architecture", "architected", "designing resilient"],
+    "microservices": ["microservices", "micro-services", "distributed systems", "distributed platforms"],
+    "message queuing": ["message queuing", "message queues", "pub/sub", "event-driven", "kafka", "rabbitmq", "kinesis"],
+    "generative ai": ["generative ai", "genai", "llm", "large language models"],
+    "technical leadership": ["technical leadership", "tech lead", "technical strategy", "driving strategy", "mentorship", "mentoring"],
+    "cloud platforms": ["cloud platforms", "public cloud", "cloud computing", "aws", "gcp", "azure"],
   };
 
-  // Build reverse lookup: abbreviation -> all synonyms
   const expandedSynonyms = {};
   Object.values(synonyms).forEach((group) => {
     group.forEach((term) => {
@@ -153,7 +150,6 @@ function calculateATSScore(keywords, resumeText) {
   keywords.forEach((keyword) => {
     const keywordLower = keyword.toLowerCase();
 
-    // Get all possible variations to search for
     let variations = [
       keywordLower,
       keywordLower.replace(/\./g, ""), // React.js -> Reactjs
@@ -161,26 +157,31 @@ function calculateATSScore(keywords, resumeText) {
       keywordLower.replace(/js$/i, ""), // ReactJS -> React
     ];
 
-    // Add synonym variations
+    // Basic pluralization/singularization fallback
+    if (keywordLower.endsWith('s')) variations.push(keywordLower.slice(0, -1));
+
     if (expandedSynonyms[keywordLower]) {
       variations = variations.concat(expandedSynonyms[keywordLower]);
     }
 
-    // Also check if any synonym group contains this keyword
     Object.values(synonyms).forEach((group) => {
-      if (
-        group.some(
-          (syn) => keywordLower.includes(syn) || syn.includes(keywordLower),
-        )
-      ) {
+      // Allow partial structural matching (e.g. "RESTful APIs" inside "REST API" group)
+      if (group.some((syn) => keywordLower.includes(syn) || syn.includes(keywordLower))) {
         variations = variations.concat(group);
       }
     });
 
-    // Remove duplicates
     variations = [...new Set(variations)];
 
-    const found = variations.some((v) => resumeLower.includes(v));
+    const found = variations.some((v) => {
+      // Use word boundaries for short acronyms to avoid false positives (like "flAWS" matching "aws")
+      if (v.length <= 4 && /^[a-z0-9]+$/i.test(v)) {
+        const regex = new RegExp(`\\b${v}\\b`, 'i');
+        return regex.test(resumeLower);
+      }
+      return resumeLower.includes(v);
+    });
+
     if (found) {
       matched.push(keyword);
     } else {
@@ -268,7 +269,7 @@ The Markdown Insight Card MUST follow this structure EXACTLY (DO NOT include Dec
 
 - **Company:** [Company Name]
 - **Role:** [Role Name]
-- **Analyzed On:** [Today's Date]`;
+- **Analyzed On:** ${new Date().toISOString().split('T')[0]}`;
 
   const payload = {
     model: provider.MODELS.ANALYSIS,
@@ -330,8 +331,8 @@ The Markdown Insight Card MUST follow this structure EXACTLY (DO NOT include Dec
   // Inject ATS section into markdown (after first ---) so insight card has keyword details
   const atsSection =
     `\n\n## 📄 ATS Score: ${ats.score}%\n\n` +
-    `**Matched (${ats.matched.length}):** ${ats.matched.slice(0, CONFIG.MAX_KEYWORDS_DISPLAY).join(", ") || "None"}\n\n` +
-    `**Missing (${ats.missing.length}):** ${ats.missing.slice(0, CONFIG.MAX_KEYWORDS_DISPLAY).join(", ") || "None"}\n\n---`;
+    `**Matched (${ats.matched.length}):** ${ats.matched.join(", ") || "None"}\n\n` +
+    `**Missing (${ats.missing.length}):** ${ats.missing.join(", ") || "None"}\n\n---`;
 
   // Replace the first --- with ATS section + ---
   analysis.markdown = analysis.markdown.replace(/\n---/, `\n---${atsSection}`);
