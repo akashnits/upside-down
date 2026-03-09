@@ -13,11 +13,11 @@ const CONFIG = {
         ANALYSIS: "google/gemini-2.5-flash",
       },
     },
-    MISTRAL: {
+    NVIDIA: {
       API_URL: "https://openrouter.ai/api/v1/chat/completions",
       API_KEY_PROP: "OPENROUTER_API_KEY",
       MODELS: {
-        ANALYSIS: "mistralai/devstral-2512:free",
+        ANALYSIS: "nvidia/nemotron-3-nano-30b-a3b:free",
       },
     },
   },
