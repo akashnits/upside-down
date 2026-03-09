@@ -1,6 +1,5 @@
 // Configuration - Constants (safe to commit)
 const CONFIG = {
-  CVS_ROOT_FOLDER_ID: "18fYuakVsUgXpKsqAFcJfCy8Ns4DVSSTY",
   // --- 🎛️ Provider Selection ---
   // Options: "GEMINI" or "MISTRAL" (Both via OpenRouter)
   PROVIDER: "GEMINI",
@@ -39,8 +38,9 @@ const CONFIG = {
 /**
  * Required Script Properties (set in Apps Script > Project Settings > Script Properties):
  *
- * - OPENROUTER_API_KEY: Get from https://openrouter.ai/keys
+ * - OPENROUTER_API_KEY : Get from https://openrouter.ai/keys
  * - GITHUB_TOKEN      : GitHub PAT with 'gist' scope
  * - RESUME_DOC_ID     : Google Doc ID containing your resume
+ * - CVS_ROOT_FOLDER_ID : Folder ID for 'Akash CVs'
  * - SHEET_ID          : (Optional) Google Sheet ID for logging
  */
