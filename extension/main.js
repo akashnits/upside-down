@@ -2,6 +2,8 @@
 // Loads after scraper.js and ui.js
 
 (function () {
+    console.log('[Upside Down] Extension loaded');
+
     // Prevent multiple injections
     if (document.getElementById('upside-down-btn')) return;
 
@@ -60,6 +62,7 @@
         btn.style.pointerEvents = 'none';
 
         const jobData = scrapeJob(); // from scraper.js
+        console.log('[Upside Down] Analyzing:', jobData.role, '@', jobData.company);
 
         if (!jobData.jobDescription) {
             alert('Could not find job description. Make sure a job is selected.');
@@ -72,6 +75,7 @@
 
         // Step 1: Send to background.js for analysis
         chrome.runtime.sendMessage({ action: 'analyze', payload: jobData }, (response) => {
+            console.log('[Upside Down] Response:', response?.success ? 'OK' : response?.error);
             if (!response || !response.success) {
                 panel.showError(response?.error || 'Unknown error');
                 resetButton();
