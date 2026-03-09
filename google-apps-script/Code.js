@@ -35,32 +35,42 @@ function doPost(e) {
       // Expects: data.analysis (object), data.company, data.role, data.jobUrl
       const analysis = data.analysis;
 
-      // 3. Save to Notion (Primary)
-      let pageUrl = "";
+      // 3. Create Gist (Primary Data Store for Phase 6)
+      let gistUrl = "";
       try {
-        pageUrl = saveToNotion(data);
-        Logger.log(`[INFO] Saved to Notion: ${pageUrl}`);
+        gistUrl = createGist(analysis.markdown, data.company, data.role);
+        Logger.log(`[INFO] Gist created: ${gistUrl}`);
       } catch (err) {
-        Logger.log(`[WARN] Notion save failed, falling back to Gist: ${err.toString()}`);
-        pageUrl = createGist(analysis.markdown, data.company, data.role);
+        Logger.log(`[ERROR] Failed to create Gist: ${err.toString()}`);
+        throw new Error("Gist creation failed.");
       }
 
-      // 4. Log to Sheet (Fallback/Secondary tracking)
+      // 4. Save to Notion (Visual Tracker)
+      let pageUrl = "";
+      try {
+        data.gistUrl = gistUrl; // Pass it along to inject into Notion
+        pageUrl = saveToNotion(data);
+        Logger.log(`[INFO] Saved to Notion Tracker: ${pageUrl}`);
+      } catch (err) {
+        Logger.log(`[WARN] Notion save failed, falling back to Sheet: ${err.toString()}`);
+      }
+
+      // 5. Log to Sheet (Optional Secondary tracking)
       logToSheet({
         company: data.company,
         role: data.role,
         decision: analysis.decision,
         confidence: analysis.confidence,
         effort: analysis.effort,
-        gistUrl: pageUrl,
+        gistUrl: gistUrl,
         jobUrl: data.jobUrl,
       });
-      Logger.log(`[SUCCESS] Logged to sheet`);
 
       return ContentService.createTextOutput(
         JSON.stringify({
           success: true,
-          gistUrl: pageUrl, // keeping key as gistUrl so extension doesn't break yet
+          gistUrl: gistUrl, 
+          notionUrl: pageUrl
         }),
       ).setMimeType(ContentService.MimeType.JSON);
     }
@@ -347,7 +357,7 @@ The Markdown Insight Card MUST follow this structure EXACTLY (DO NOT include Dec
 }
 
 /**
- * Create a page in the Notion ATS Database
+ * Create a page in the Notion ATS Database (Tracker Only)
  */
 function saveToNotion(data, isRetry = false) {
   const token = PROPERTIES.getProperty("NOTION_API_KEY");
@@ -356,22 +366,6 @@ function saveToNotion(data, isRetry = false) {
   if (!token || !dbId) throw new Error("NOTION_API_KEY or NOTION_DB_ID not set");
 
   const analysis = data.analysis;
-  const blocks = [];
-
-  // Split markdown into 2000-char chunks as per Notion limits
-  const md = analysis.markdown || "No analysis provided.";
-  const chunks = md.match(/.{1,2000}/g) || [md];
-
-  chunks.forEach(chunk => {
-    blocks.push({
-      object: "block",
-      type: "code",
-      code: {
-        language: "markdown",
-        rich_text: [{ text: { content: chunk } }]
-      }
-    });
-  });
 
   const payload = {
     parent: { database_id: dbId },
@@ -381,10 +375,13 @@ function saveToNotion(data, isRetry = false) {
       "Role": { rich_text: [{ text: { content: data.role || "Unknown" } }] },
       "Decision": { select: { name: analysis.decision || "MAYBE" } },
       "Confidence": { select: { name: analysis.confidence || "MEDIUM" } },
-      "Link": { url: data.jobUrl || "" },
-      "Status": { select: { name: "To Review" } }
-    },
-    children: blocks
+      "ATS Score": { number: analysis.atsScore || 0 },
+      "Job Link": { url: data.jobUrl || "" },
+      "Gist Link": { url: data.gistUrl || "" },
+      "Status": { select: { name: "To Review" } },
+      "Date": { date: { start: new Date().toISOString().split('T')[0] } }
+    }
+    // Note: We are no longer pushing body 'children' blocks because Gist holds the data
   };
 
   const options = {
@@ -403,16 +400,14 @@ function saveToNotion(data, isRetry = false) {
   const responseData = JSON.parse(response.getContentText());
 
   if (responseCode !== 200) {
-    // Self-healing: If Notion says the columns don't exist, auto-create them!
     if (responseData.code === 'validation_error' && !isRetry) {
-      Logger.log(`[INFO] Validation error caught. Provisioning Notion schema...`);
+      Logger.log(`[INFO] Validation error caught. Provisioning Notion Tracker schema...`);
       initNotionDatabase(dbId, token);
-      return saveToNotion(data, true); // Retry exactly once
+      return saveToNotion(data, true);
     }
     throw new Error(`Notion API Error (${responseCode}): ${JSON.stringify(responseData)}`);
   }
 
-  // Return the shiny new Notion page URL
   return responseData.url;
 }
 
@@ -427,8 +422,11 @@ function initNotionDatabase(dbId, token) {
       "Role": { "rich_text": {} },
       "Decision": { "select": { "options": [{ "name": "APPLY", "color": "green" }, { "name": "MAYBE", "color": "yellow" }, { "name": "SKIP", "color": "red" }] } },
       "Confidence": { "select": { "options": [{ "name": "HIGH", "color": "green" }, { "name": "MEDIUM", "color": "yellow" }, { "name": "LOW", "color": "red" }] } },
-      "Link": { "url": {} },
-      "Status": { "select": { "options": [{ "name": "To Review", "color": "gray" }] } }
+      "ATS Score": { "number": { "format": "percent" } },
+      "Job Link": { "url": {} },
+      "Gist Link": { "url": {} },
+      "Status": { "select": { "options": [{ "name": "To Review", "color": "gray" }, { "name": "Applied", "color": "blue" }, { "name": "Interview", "color": "purple" }, { "name": "Rejected", "color": "red" }] } },
+      "Date": { "date": {} }
     }
   };
 
