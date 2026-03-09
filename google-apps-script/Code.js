@@ -425,8 +425,8 @@ function saveToNotion(data, isRetry = false) {
       "ATS Score": { number: (Math.round((analysis.atsScore || 0) * 100) / 100) / 100 }, // Notion percent format expects a decimal (0.67 = 67%)
       "Job Link": { url: data.jobUrl || "" },
       "Job ID": { rich_text: [{ text: { content: data.jobId || "Unknown" } }] },
-      "Gist Link": { url: data.gistUrl || "" },
-      "Resume Link": { url: data.resumeUrl || "" },
+      "Gist Link": { url: data.gistUrl || null },
+      "Resume Link": { url: data.resumeUrl || null },
       "Status": { select: { name: "To Review" } },
       "Date": { date: { start: new Date().toISOString().split('T')[0] } }
     }
