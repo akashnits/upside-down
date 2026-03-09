@@ -285,7 +285,7 @@ The Markdown Insight Card MUST follow this structure EXACTLY (DO NOT include Dec
 
 - **Company:** [Company Name]
 - **Role:** [Role Name]
-- **Analyzed On:** ${new Date().toISOString().split('T')[0]}`;
+- **Analyzed On:** ${new Date().toLocaleDateString('en-CA')}`; // en-CA gives YYYY-MM-DD format based on local timezone
 
   const payload = {
     model: provider.MODELS.ANALYSIS,
