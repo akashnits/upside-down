@@ -349,7 +349,7 @@ The Markdown Insight Card MUST follow this structure EXACTLY (DO NOT include Dec
 /**
  * Create a page in the Notion ATS Database
  */
-function saveToNotion(data) {
+function saveToNotion(data, isRetry = false) {
   const token = PROPERTIES.getProperty("NOTION_API_KEY");
   const dbId = PROPERTIES.getProperty("NOTION_DB_ID");
   
@@ -376,7 +376,13 @@ function saveToNotion(data) {
   const payload = {
     parent: { database_id: dbId },
     properties: {
-      "Name": { title: [{ text: { content: `${data.company || "Unknown"} - ${data.role || "Unknown"}` } }] }
+      "Name": { title: [{ text: { content: `${data.company || "Unknown"} - ${data.role || "Unknown"}` } }] },
+      "Company": { rich_text: [{ text: { content: data.company || "Unknown" } }] },
+      "Role": { rich_text: [{ text: { content: data.role || "Unknown" } }] },
+      "Decision": { select: { name: analysis.decision || "MAYBE" } },
+      "Confidence": { select: { name: analysis.confidence || "MEDIUM" } },
+      "Link": { url: data.jobUrl || "" },
+      "Status": { select: { name: "To Review" } }
     },
     children: blocks
   };
@@ -397,11 +403,48 @@ function saveToNotion(data) {
   const responseData = JSON.parse(response.getContentText());
 
   if (responseCode !== 200) {
+    // Self-healing: If Notion says the columns don't exist, auto-create them!
+    if (responseData.code === 'validation_error' && !isRetry) {
+      Logger.log(`[INFO] Validation error caught. Provisioning Notion schema...`);
+      initNotionDatabase(dbId, token);
+      return saveToNotion(data, true); // Retry exactly once
+    }
     throw new Error(`Notion API Error (${responseCode}): ${JSON.stringify(responseData)}`);
   }
 
   // Return the shiny new Notion page URL
   return responseData.url;
+}
+
+/**
+ * Auto-Initialize the Notion Database Schema if properties are missing
+ */
+function initNotionDatabase(dbId, token) {
+  Logger.log(`[INFO] Auto-initializing Notion Database schema for db: ${dbId}`);
+  const payload = {
+    properties: {
+      "Company": { "rich_text": {} },
+      "Role": { "rich_text": {} },
+      "Decision": { "select": { "options": [{ "name": "APPLY", "color": "green" }, { "name": "MAYBE", "color": "yellow" }, { "name": "SKIP", "color": "red" }] } },
+      "Confidence": { "select": { "options": [{ "name": "HIGH", "color": "green" }, { "name": "MEDIUM", "color": "yellow" }, { "name": "LOW", "color": "red" }] } },
+      "Link": { "url": {} },
+      "Status": { "select": { "options": [{ "name": "To Review", "color": "gray" }] } }
+    }
+  };
+
+  const options = {
+    method: "patch",
+    contentType: "application/json",
+    headers: { 
+      "Authorization": `Bearer ${token}`,
+      "Notion-Version": CONFIG.NOTION_VERSION
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+
+  const response = UrlFetchApp.fetch(`https://api.notion.com/v1/databases/${dbId}`, options);
+  Logger.log(`[INFO] Init schema response: ${response.getContentText()}`);
 }
 
 /**
