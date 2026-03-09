@@ -375,7 +375,7 @@ function saveToNotion(data, isRetry = false) {
       "Role": { rich_text: [{ text: { content: data.role || "Unknown" } }] },
       "Decision": { select: { name: analysis.decision || "MAYBE" } },
       "Confidence": { select: { name: analysis.confidence || "MEDIUM" } },
-      "ATS Score": { number: analysis.atsScore || 0 },
+      "ATS Score": { number: (Math.round((analysis.atsScore || 0) * 100) / 100) / 100 }, // Notion percent format expects a decimal (0.67 = 67%)
       "Job Link": { url: data.jobUrl || "" },
       "Gist Link": { url: data.gistUrl || "" },
       "Status": { select: { name: "To Review" } },
