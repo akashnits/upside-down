@@ -48,7 +48,7 @@ function doPost(e) {
       // 4. Duplicate Resume for Tailoring
       let newResumeUrl = "";
       try {
-        newResumeUrl = duplicateResume(data.role, data.company);
+        newResumeUrl = duplicateResume(data.role, data.company, data.jobId);
         Logger.log(`[INFO] Created tailored resume draft: ${newResumeUrl}`);
       } catch (err) {
         Logger.log(`[ERROR] Resume duplication failed: ${err.toString()}`);
@@ -106,23 +106,34 @@ function getResumeContent() {
 }
 
 /**
- * Duplicates the Base Resume into a new Drive folder
+ * Duplicates the Base Resume into a nested Drive folder structure:
+ * Akash CVs -> [Company Name] -> [Role]_[JobId]
  * Returns the URL of the new document.
  */
-function duplicateResume(role, company) {
+function duplicateResume(role, company, jobId) {
   const baseDocId = PROPERTIES.getProperty("RESUME_DOC_ID");
   if (!baseDocId) return "";
 
   try {
     const baseFile = DriveApp.getFileById(baseDocId);
-    // Sanitize folder name
-    const folderName = `${role || "Unknown"}_${company || "Unknown"}`.replace(/[^a-zA-Z0-9 _-]/g, '');
-    const folder = DriveApp.createFolder(folderName);
+    const sanitizedCompany = (company || "Unknown").replace(/[^a-zA-Z0-9 _-]/g, '');
+    const folderName = `${role || "Unknown"}_${jobId || "Unknown"}`.replace(/[^a-zA-Z0-9 _-]/g, '');
     
-    // Create copy inside the new folder
-    const newFile = baseFile.makeCopy(`Tailored Resume - ${folderName}`, folder);
+    // Find or create "Akash CVs" root folder
+    let rootIter = DriveApp.getFoldersByName("Akash CVs");
+    let rootFolder = rootIter.hasNext() ? rootIter.next() : DriveApp.createFolder("Akash CVs");
     
-    return newFile.getUrl(); // e.g., https://docs.google.com/document/d/ID/edit
+    // Find or create Company folder inside Root
+    let companyIter = rootFolder.getFoldersByName(sanitizedCompany);
+    let companyFolder = companyIter.hasNext() ? companyIter.next() : rootFolder.createFolder(sanitizedCompany);
+
+    // Create the specific Role/Job folder inside the Company folder
+    const targetFolder = companyFolder.createFolder(folderName);
+    
+    // Create copy inside the new target folder
+    const newFile = baseFile.makeCopy(`${role} - Tailored Resume`, targetFolder);
+    
+    return newFile.getUrl();
   } catch (err) {
     Logger.log(`[ERROR] Failed to duplicate resume: ${err.toString()}`);
     return "";
