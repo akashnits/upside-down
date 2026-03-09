@@ -167,7 +167,7 @@ function createPanel() {
                             <polyline points="20 6 9 17 4 12"></polyline>
                         </svg>
                     </button>
-                    <pre style="margin:0; font-family:Menlo, Monaco, Consolas, monospace; font-size:11px; color:#1f2937; white-space:pre-wrap; word-wrap:break-word; overflow-wrap:anywhere; max-height:180px; overflow-y:auto; padding-top:10px; padding-right:24px;">${promptText}</pre>
+                    <pre style="margin:0; font-family:Menlo, Monaco, Consolas, monospace; font-size:12px; line-height:1.5; color:#1f2937; white-space:pre-wrap; word-wrap:break-word; padding-top:8px; padding-right:36px;">${promptText}</pre>
                 </div>
             `;
 
