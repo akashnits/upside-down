@@ -94,13 +94,25 @@
                 }, (saveResponse) => {
                     if (saveResponse?.success) {
                         // Assemble Cowork Prompt
-                        const promptText = `Please use the \`resume-tailor\` skill to update my resume for the ${jobData.role} position at ${jobData.company} (Job ID: ${jobData.jobId}).
-      
-Here is my base resume:
-${saveResponse.resumeUrl || "[Attach Resume .docx]"}
-      
-Here is the job analysis data:
-${saveResponse.gistUrl}`;
+                        const promptText = `Please act as an expert Executive Resume Writer and help me tailor my resume for the ${jobData.role} position at ${jobData.company} (Notion Job ID: ${jobData.jobId}).
+
+Here is the context:
+1. Base Resume: ${saveResponse.resumeUrl || "[Attach Resume .docx]"}
+2. Job Analysis Data: ${saveResponse.gistUrl}
+
+Task Requirements & Execution Rules:
+1. TARGETED EDITS ONLY: Only modify two sections of the document:
+   - Professional Summary / Objective: Rewrite this to incorporate the missing keywords and directly address the "Rejection Reasons" found in the analysis.
+   - Skills / Technologies: Inject missing hard skills where appropriate.
+
+2. PRESERVE EXPERIENCE & FORMATTING:
+   - Do NOT abbreviate, fabricate, or hallucinate work experience to force a missing keyword. Every keyword added must be contextually plausible based on my background.
+   - You MUST use the 'docx' skill to maintain the exact same design, fonts, margins, header styles, and bullet layout structure as the base resume file.
+
+Output & Automation Steps:
+1. Generate New Document: Execute the rewrites and generate a brand new \`.docx\` file. NEVER overwrite or save changes directly to the original base resume link.
+2. Save to Google Drive: Create a folder in my Google Drive named EXACTLY \`${jobData.role}_${jobData.company}\`. Save the newly tailored \`.docx\` resume into this folder.
+3. Update Notion Tracker: Search my Notion Job Tracker database using the exact Job ID: \`${jobData.jobId}\`. Update that row's "Resume Link" property with the Google Drive share link to the newly tailored file.`;
 
                         // Copy to clipboard
                         navigator.clipboard.writeText(promptText).then(() => {
