@@ -134,6 +134,9 @@ function duplicateResume(role, company, jobId) {
     // Create copy inside the new target folder
     const newFile = baseFile.makeCopy(`Akash_Raj`, targetFolder);
     
+    // Grant edit access so Cowork/AI can modify it
+    newFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
+    
     return newFile.getUrl();
   } catch (err) {
     Logger.log(`[ERROR] Failed to duplicate resume: ${err.toString()}`);
