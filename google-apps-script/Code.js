@@ -132,7 +132,7 @@ function duplicateResume(role, company, jobId) {
     const targetFolder = companyFolder.createFolder(folderName);
     
     // Create copy inside the new target folder
-    const newFile = baseFile.makeCopy(`${role} - Tailored Resume`, targetFolder);
+    const newFile = baseFile.makeCopy(`Akash_Raj`, targetFolder);
     
     return newFile.getUrl();
   } catch (err) {
