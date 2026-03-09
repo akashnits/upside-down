@@ -1,0 +1,1 @@
+When the user asks to "deploy", "push to GAS", or "update the backend", use the deploy-gas skill located at .claude/skills/deploy-gas/SKILL.md to automate the Google Apps Script deployment via clasp. Always run both `clasp push` and `clasp deploy` together — never push without deploying.
