@@ -70,7 +70,8 @@ function doPost(e) {
         JSON.stringify({
           success: true,
           gistUrl: gistUrl, 
-          notionUrl: pageUrl
+          notionUrl: pageUrl,
+          resumeUrl: PROPERTIES.getProperty("RESUME_DOC_ID") ? `https://docs.google.com/document/d/${PROPERTIES.getProperty("RESUME_DOC_ID")}/edit` : ""
         }),
       ).setMimeType(ContentService.MimeType.JSON);
     }
@@ -377,6 +378,7 @@ function saveToNotion(data, isRetry = false) {
       "Confidence": { select: { name: analysis.confidence || "MEDIUM" } },
       "ATS Score": { number: (Math.round((analysis.atsScore || 0) * 100) / 100) / 100 }, // Notion percent format expects a decimal (0.67 = 67%)
       "Job Link": { url: data.jobUrl || "" },
+      "Job ID": { rich_text: [{ text: { content: data.jobId || "Unknown" } }] },
       "Gist Link": { url: data.gistUrl || "" },
       "Status": { select: { name: "To Review" } },
       "Date": { date: { start: new Date().toISOString().split('T')[0] } }
@@ -424,7 +426,9 @@ function initNotionDatabase(dbId, token) {
       "Confidence": { "select": { "options": [{ "name": "HIGH", "color": "green" }, { "name": "MEDIUM", "color": "yellow" }, { "name": "LOW", "color": "red" }] } },
       "ATS Score": { "number": { "format": "percent" } },
       "Job Link": { "url": {} },
+      "Job ID": { "rich_text": {} },
       "Gist Link": { "url": {} },
+      "Resume Link": { "url": {} },
       "Status": { "select": { "options": [{ "name": "To Review", "color": "gray" }, { "name": "Applied", "color": "blue" }, { "name": "Interview", "color": "purple" }, { "name": "Rejected", "color": "red" }] } },
       "Date": { "date": {} }
     }

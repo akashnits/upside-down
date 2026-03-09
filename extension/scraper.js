@@ -35,6 +35,7 @@ function scrapeJob() {
         ]) || "",
 
         jobUrl: window.location.href,
+        jobId: (window.location.href.match(/\/view\/(\d+)/) || window.location.href.match(/currentJobId=(\d+)/) || [null, `UD-${Date.now()}`])[1],
         source: 'dom'
     };
 }

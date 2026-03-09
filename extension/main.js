@@ -93,7 +93,23 @@
                     payload: { ...jobData, analysis: analysis }
                 }, (saveResponse) => {
                     if (saveResponse?.success) {
-                        panel.showSuccess(saveResponse.gistUrl);
+                        // Assemble Cowork Prompt
+                        const promptText = `Please use the \`resume-tailor\` skill to update my resume for the ${jobData.role} position at ${jobData.company} (Job ID: ${jobData.jobId}).
+      
+Here is my base resume:
+${saveResponse.resumeUrl || "[Attach Resume .docx]"}
+      
+Here is the job analysis data:
+${saveResponse.gistUrl}`;
+
+                        // Copy to clipboard
+                        navigator.clipboard.writeText(promptText).then(() => {
+                            console.log('[Upside Down] Copied Cowork prompt to clipboard.');
+                        }).catch(err => {
+                            console.error('[Upside Down] Failed to copy to clipboard:', err);
+                        });
+
+                        panel.showSuccess(saveResponse.gistUrl); // Legacy parameter, no longer used by UI UI but kept for safety
                     } else {
                         panel.showError(saveResponse?.error || 'Save failed');
                     }
