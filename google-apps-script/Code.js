@@ -348,6 +348,7 @@ The Markdown Insight Card MUST follow this structure EXACTLY (DO NOT include Dec
       { role: "user", content: prompt },
     ],
     temperature: CONFIG.TEMPERATURE.ANALYSIS,
+    max_tokens: 4096,
     response_format: { type: "json_object" },
   };
 
@@ -364,7 +365,26 @@ The Markdown Insight Card MUST follow this structure EXACTLY (DO NOT include Dec
 
   const response = UrlFetchApp.fetch(provider.API_URL, options);
   const data = JSON.parse(response.getContentText());
-  let jsonString = data.choices[0].message.content;
+  
+  // Check finish_reason — if 'length', the response was truncated
+  const finishReason = data.choices[0].finish_reason;
+  Logger.log(`[INFO] LLM finish_reason: ${finishReason}`);
+  
+  if (finishReason === 'length') {
+    Logger.log(`[WARN] LLM response was truncated (finish_reason=length). Retrying with higher max_tokens...`);
+    payload.max_tokens = 8192;
+    options.payload = JSON.stringify(payload);
+    const retryResponse = UrlFetchApp.fetch(provider.API_URL, options);
+    const retryData = JSON.parse(retryResponse.getContentText());
+    const retryFinish = retryData.choices[0].finish_reason;
+    Logger.log(`[INFO] Retry finish_reason: ${retryFinish}`);
+    if (retryFinish === 'length') {
+      throw new Error('LLM response still truncated after retry. The job description may be too long.');
+    }
+    var jsonString = retryData.choices[0].message.content;
+  } else {
+    var jsonString = data.choices[0].message.content;
+  }
 
   // Clean markdown code blocks if present
   jsonString = jsonString
@@ -377,7 +397,7 @@ The Markdown Insight Card MUST follow this structure EXACTLY (DO NOT include Dec
     analysis = JSON.parse(jsonString);
   } catch (e) {
     Logger.log(
-      `[ERROR] Failed to parse analysis JSON: ${jsonString.substring(0, 500)}`,
+      `[ERROR] Failed to parse analysis JSON (finish_reason=${finishReason}): ${jsonString.substring(0, 500)}`,
     );
     throw new Error("Failed to parse AI response as JSON");
   }
