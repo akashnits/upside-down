@@ -20,9 +20,9 @@ function doPost(e) {
       
       if (data.jobId) {
         try {
-          const notionResumeUrl = getResumeFromNotion(data.jobId);
-          if (notionResumeUrl) {
-            resumeText = getDocTextFromUrl(notionResumeUrl);
+          const existing = findNotionEntry(data.jobId);
+          if (existing && existing.resumeUrl) {
+            resumeText = getDocTextFromUrl(existing.resumeUrl);
             resumeSource = "tailored";
             Logger.log(`[INFO] Using tailored resume from Notion for Job ID: ${data.jobId}`);
           }
@@ -54,7 +54,17 @@ function doPost(e) {
       // Expects: data.analysis (object), data.company, data.role, data.jobUrl
       const analysis = data.analysis;
 
-      // 3. Create Gist (Primary Data Store for Phase 6)
+      // Check if this Job ID already exists in Notion
+      let existingEntry = null;
+      if (data.jobId) {
+        try {
+          existingEntry = findNotionEntry(data.jobId);
+        } catch (err) {
+          Logger.log(`[WARN] Notion lookup failed: ${err.toString()}`);
+        }
+      }
+
+      // 3. Create Gist (always create a new one for latest analysis)
       let gistUrl = "";
       try {
         gistUrl = createGist(analysis.markdown, data.company, data.role);
@@ -64,24 +74,40 @@ function doPost(e) {
         throw new Error("Gist creation failed.");
       }
 
-      // 4. Duplicate Resume for Tailoring
       let newResumeUrl = "";
-      try {
-        newResumeUrl = duplicateResume(data.role, data.company, data.jobId);
-        Logger.log(`[INFO] Created tailored resume draft: ${newResumeUrl}`);
-      } catch (err) {
-        Logger.log(`[ERROR] Resume duplication failed: ${err.toString()}`);
-      }
 
-      // 5. Save to Notion (Visual Tracker)
-      let pageUrl = "";
-      try {
-        data.gistUrl = gistUrl; 
-        data.resumeUrl = newResumeUrl; // Inject duplicated resume URL into Notion
-        pageUrl = saveToNotion(data);
-        Logger.log(`[INFO] Saved to Notion Tracker: ${pageUrl}`);
-      } catch (err) {
-        Logger.log(`[WARN] Notion save failed, falling back to Sheet: ${err.toString()}`);
+      if (existingEntry) {
+        // Reuse existing resume doc — no new duplicates
+        newResumeUrl = existingEntry.resumeUrl || "";
+        Logger.log(`[INFO] Reusing existing resume: ${newResumeUrl}`);
+
+        // Update the existing Notion page with latest analysis
+        try {
+          data.gistUrl = gistUrl;
+          data.resumeUrl = newResumeUrl;
+          updateNotionPage(existingEntry.pageId, data);
+          Logger.log(`[INFO] Updated existing Notion entry: ${existingEntry.pageId}`);
+        } catch (err) {
+          Logger.log(`[WARN] Notion update failed: ${err.toString()}`);
+        }
+      } else {
+        // 4. Duplicate Resume for Tailoring (first time only)
+        try {
+          newResumeUrl = duplicateResume(data.role, data.company, data.jobId);
+          Logger.log(`[INFO] Created tailored resume draft: ${newResumeUrl}`);
+        } catch (err) {
+          Logger.log(`[ERROR] Resume duplication failed: ${err.toString()}`);
+        }
+
+        // 5. Save to Notion (new entry)
+        try {
+          data.gistUrl = gistUrl;
+          data.resumeUrl = newResumeUrl;
+          saveToNotion(data);
+          Logger.log(`[INFO] Saved new Notion entry`);
+        } catch (err) {
+          Logger.log(`[WARN] Notion save failed: ${err.toString()}`);
+        }
       }
 
       // 6. Log to Sheet (Optional Secondary tracking)
@@ -135,10 +161,10 @@ function getDocTextFromUrl(url) {
 }
 
 /**
- * Query Notion DB for an existing tailored resume link by Job ID
- * Returns the resume URL string, or null if not found.
+ * Query Notion DB for an existing entry by Job ID.
+ * Returns { pageId, resumeUrl } or null if not found.
  */
-function getResumeFromNotion(jobId) {
+function findNotionEntry(jobId) {
   const token = PROPERTIES.getProperty("NOTION_API_KEY");
   const dbId = PROPERTIES.getProperty("NOTION_DB_ID");
   if (!token || !dbId) return null;
@@ -166,15 +192,55 @@ function getResumeFromNotion(jobId) {
   const data = JSON.parse(response.getContentText());
 
   if (data.results && data.results.length > 0) {
-    const resumeLink = data.results[0].properties["Resume Link"];
-    if (resumeLink && resumeLink.url) {
-      Logger.log(`[INFO] Found tailored resume in Notion: ${resumeLink.url}`);
-      return resumeLink.url;
-    }
+    const page = data.results[0];
+    const resumeLink = page.properties["Resume Link"];
+    Logger.log(`[INFO] Found existing Notion entry for Job ID: ${jobId}`);
+    return {
+      pageId: page.id,
+      resumeUrl: (resumeLink && resumeLink.url) || null
+    };
   }
   
-  Logger.log(`[INFO] No tailored resume found in Notion for Job ID: ${jobId}`);
+  Logger.log(`[INFO] No existing entry in Notion for Job ID: ${jobId}`);
   return null;
+}
+
+/**
+ * Update an existing Notion page with latest analysis data.
+ */
+function updateNotionPage(pageId, data) {
+  const token = PROPERTIES.getProperty("NOTION_API_KEY");
+  if (!token) throw new Error("NOTION_API_KEY not set");
+
+  const analysis = data.analysis;
+
+  const payload = {
+    properties: {
+      "Decision": { select: { name: analysis.decision || "MAYBE" } },
+      "Confidence": { select: { name: analysis.confidence || "MEDIUM" } },
+      "ATS Score": { number: (Math.round((analysis.atsScore || 0) * 100) / 100) / 100 },
+      "Gist Link": { url: data.gistUrl || null },
+      "Resume Link": { url: data.resumeUrl || null },
+      "Date": { date: { start: new Date().toISOString().split('T')[0] } }
+    }
+  };
+
+  const options = {
+    method: "patch",
+    contentType: "application/json",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Notion-Version": CONFIG.NOTION_VERSION
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+
+  const response = UrlFetchApp.fetch(`https://api.notion.com/v1/pages/${pageId}`, options);
+  const responseCode = response.getResponseCode();
+  if (responseCode !== 200) {
+    throw new Error(`Notion Update Error (${responseCode}): ${response.getContentText()}`);
+  }
 }
 
 /**
