@@ -23,7 +23,8 @@ Task Requirements & Execution Rules:
    - Professional Summary / Objective: Rewrite this to incorporate the missing keywords and directly address the "Rejection Reasons" found in the analysis.
    - Skills / Technologies: Inject missing hard skills where appropriate.
 
-2. PRESERVE EXPERIENCE & FORMATTING:
-   - Do NOT abbreviate, fabricate, or hallucinate work experience to force a missing keyword. Every keyword added must be contextually plausible based on my background.
+2. MISSING KEYWORDS & EXPERIENCE:
+   - Do NOT abbreviate, fabricate, or hallucinate work experience to force a missing keyword.
+   - For any missing technologies or hard skills (e.g. Kubernetes, Terraform, GitOps, etc.) that are NOT in my background: Instead of an outright rejection or omission, ASK ME if I have experience with them and take my input to decide whether to include them.
    - You MUST use the 'docx' skill to maintain the exact same design, fonts, margins, header styles, and bullet layout structure as the provided resume draft.`;
 }
