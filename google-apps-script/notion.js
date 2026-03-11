@@ -61,10 +61,14 @@ function updateNotionPage(pageId, data) {
       "Confidence": { select: { name: analysis.confidence || "MEDIUM" } },
       "ATS Score": { number: (Math.round((analysis.atsScore || 0) * 100) / 100) / 100 },
       "Gist Link": { url: data.gistUrl || null },
-      "Resume Link": { url: data.resumeUrl || null },
       "Date": { date: { start: new Date().toISOString().split('T')[0] } }
     }
   };
+
+  // Only update Resume Link if a valid URL was passed
+  if (data.resumeUrl) {
+    payload.properties["Resume Link"] = { url: data.resumeUrl };
+  }
 
   const options = {
     method: "patch",
