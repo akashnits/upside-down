@@ -14,9 +14,28 @@ function doPost(e) {
     if (action === "analyze") {
       const jobDescription = data.jobDescription;
 
-      // 1. Fetch Resume
-      const resumeText = getResumeContent();
-      Logger.log(`[INFO] Resume fetched. Length: ${resumeText.length} chars`);
+      // 1. Try to fetch tailored resume from Notion, fall back to base resume
+      let resumeText = "";
+      let resumeSource = "base";
+      
+      if (data.jobId) {
+        try {
+          const notionResumeUrl = getResumeFromNotion(data.jobId);
+          if (notionResumeUrl) {
+            resumeText = getDocTextFromUrl(notionResumeUrl);
+            resumeSource = "tailored";
+            Logger.log(`[INFO] Using tailored resume from Notion for Job ID: ${data.jobId}`);
+          }
+        } catch (err) {
+          Logger.log(`[WARN] Could not fetch tailored resume from Notion: ${err.toString()}`);
+        }
+      }
+      
+      if (!resumeText) {
+        resumeText = getResumeContent();
+        Logger.log(`[INFO] Using base resume (fallback).`);
+      }
+      Logger.log(`[INFO] Resume source: ${resumeSource}. Length: ${resumeText.length} chars`);
 
       // 2. Analyze
       const analysis = analyzeJob(jobDescription, resumeText);
@@ -97,12 +116,65 @@ function doPost(e) {
 }
 
 /**
- * Helper to fetch Resume Text from Google Doc
+ * Helper to fetch Resume Text from Google Doc (base resume)
  */
 function getResumeContent() {
   const docId = PROPERTIES.getProperty("RESUME_DOC_ID");
   if (!docId) throw new Error("RESUME_DOC_ID not set in Script Properties");
   return DocumentApp.openById(docId).getBody().getText();
+}
+
+/**
+ * Extract Google Doc text from a URL
+ */
+function getDocTextFromUrl(url) {
+  // Extract Doc ID from URLs like https://docs.google.com/document/d/DOC_ID/edit
+  const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (!match) throw new Error(`Could not extract Doc ID from URL: ${url}`);
+  return DocumentApp.openById(match[1]).getBody().getText();
+}
+
+/**
+ * Query Notion DB for an existing tailored resume link by Job ID
+ * Returns the resume URL string, or null if not found.
+ */
+function getResumeFromNotion(jobId) {
+  const token = PROPERTIES.getProperty("NOTION_API_KEY");
+  const dbId = PROPERTIES.getProperty("NOTION_DB_ID");
+  if (!token || !dbId) return null;
+
+  const payload = {
+    filter: {
+      property: "Job ID",
+      rich_text: { equals: jobId }
+    },
+    page_size: 1
+  };
+
+  const options = {
+    method: "post",
+    contentType: "application/json",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Notion-Version": CONFIG.NOTION_VERSION
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+
+  const response = UrlFetchApp.fetch(`https://api.notion.com/v1/databases/${dbId}/query`, options);
+  const data = JSON.parse(response.getContentText());
+
+  if (data.results && data.results.length > 0) {
+    const resumeLink = data.results[0].properties["Resume Link"];
+    if (resumeLink && resumeLink.url) {
+      Logger.log(`[INFO] Found tailored resume in Notion: ${resumeLink.url}`);
+      return resumeLink.url;
+    }
+  }
+  
+  Logger.log(`[INFO] No tailored resume found in Notion for Job ID: ${jobId}`);
+  return null;
 }
 
 /**
