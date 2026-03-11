@@ -420,7 +420,7 @@ The Markdown Insight Card MUST follow this structure EXACTLY (DO NOT include Dec
       { role: "user", content: prompt },
     ],
     temperature: CONFIG.TEMPERATURE.ANALYSIS,
-    max_tokens: 4096,
+    max_tokens: 8192,
     response_format: { type: "json_object" },
   };
 
@@ -444,7 +444,7 @@ The Markdown Insight Card MUST follow this structure EXACTLY (DO NOT include Dec
   
   if (finishReason === 'length') {
     Logger.log(`[WARN] LLM response was truncated (finish_reason=length). Retrying with higher max_tokens...`);
-    payload.max_tokens = 8192;
+    payload.max_tokens = 16384;
     options.payload = JSON.stringify(payload);
     const retryResponse = UrlFetchApp.fetch(provider.API_URL, options);
     const retryData = JSON.parse(retryResponse.getContentText());
