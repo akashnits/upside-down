@@ -10,7 +10,7 @@ const CONFIG = {
       API_URL: "https://openrouter.ai/api/v1/chat/completions",
       API_KEY_PROP: "OPENROUTER_API_KEY",
       MODELS: {
-        ANALYSIS: "google/gemini-2.5-flash",
+        ANALYSIS: "google/gemini-2.0-flash-001",
       },
     },
     NVIDIA: {

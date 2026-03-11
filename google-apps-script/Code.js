@@ -422,8 +422,6 @@ The Markdown Insight Card MUST follow this structure EXACTLY (DO NOT include Dec
     temperature: CONFIG.TEMPERATURE.ANALYSIS,
     max_tokens: 8192,
     response_format: { type: "json_object" },
-    // Disable thinking/reasoning to prevent hidden tokens from consuming the output budget
-    reasoning: { effort: "none" },
   };
 
   const options = {
