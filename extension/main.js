@@ -13,36 +13,11 @@
     // Create floating Analyze button (FAB style)
     const btn = document.createElement('button');
     btn.id = 'upside-down-btn';
-    btn.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="white"><path d="M12 0L14.59 8.41L23 11L14.59 13.59L12 22L9.41 13.59L1 11L9.41 8.41L12 0Z"/><path d="M19 2L19.94 4.06L22 5L19.94 5.94L19 8L18.06 5.94L16 5L18.06 4.06L19 2Z" opacity="0.7"/><path d="M5 16L5.66 17.34L7 18L5.66 18.66L5 20L4.34 18.66L3 18L4.34 17.34L5 16Z" opacity="0.7"/></svg>`;
+    btn.innerHTML = BUTTON_ICON_SVG;
     btn.title = 'Analyze Job with Upside Down';
-    btn.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        z-index: 10000;
-        width: 60px;
-        height: 60px;
-        background: #0A66C2;
-        color: white;
-        border: none;
-        border-radius: 50%;
-        font-size: 28px;
-        cursor: pointer;
-        box-shadow: 0 4px 12px rgba(10, 102, 194, 0.4);
-        transition: transform 0.2s, box-shadow 0.2s;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        filter: drop-shadow(0 0 0 white);
-    `;
-    btn.onmouseover = () => {
-        btn.style.transform = 'scale(1.1)';
-        btn.style.boxShadow = '0 6px 16px rgba(10, 102, 194, 0.5)';
-    };
-    btn.onmouseout = () => {
-        btn.style.transform = 'scale(1)';
-        btn.style.boxShadow = '0 4px 12px rgba(10, 102, 194, 0.4)';
-    };
+    btn.style.cssText = BUTTON_STYLES.base;
+    btn.onmouseover = () => Object.assign(btn.style, BUTTON_STYLES.hover);
+    btn.onmouseout = () => Object.assign(btn.style, BUTTON_STYLES.normal);
     document.body.appendChild(btn);
 
     // Re-enable button after analysis completes (success or error)
@@ -94,23 +69,7 @@
                 }, (saveResponse) => {
                     if (saveResponse?.success) {
                         // Assemble Cowork Prompt
-                        const promptText = `Please act as an expert Executive Resume Writer and help me tailor my resume for the ${jobData.role} position at ${jobData.company}.
-
-Here is the context:
-1. Resume Draft Link: ${saveResponse.resumeUrl || "[Attach Resume .docx]"}
-2. Job Analysis Data: 
-"""
-${analysis.markdown}
-"""
-
-Task Requirements & Execution Rules:
-1. TARGETED EDITS ONLY: Only modify two sections of the document:
-   - Professional Summary / Objective: Rewrite this to incorporate the missing keywords and directly address the "Rejection Reasons" found in the analysis.
-   - Skills / Technologies: Inject missing hard skills where appropriate.
-
-2. PRESERVE EXPERIENCE & FORMATTING:
-   - Do NOT abbreviate, fabricate, or hallucinate work experience to force a missing keyword. Every keyword added must be contextually plausible based on my background.
-   - You MUST use the 'docx' skill to maintain the exact same design, fonts, margins, header styles, and bullet layout structure as the provided resume draft.`;
+                        const promptText = buildCoworkPrompt(jobData, analysis, saveResponse.resumeUrl);
 
                         // Copy to clipboard
                         navigator.clipboard.writeText(promptText).then(() => {

@@ -11,7 +11,7 @@
   "content_scripts": [
     {
       "matches": ["https://www.linkedin.com/jobs/*"],
-      "js": ["scraper.js", "ui.js", "main.js"]
+      "js": ["scraper.js", "ui.js", "prompt.js", "styles.js", "main.js"]
     }
   ],
   "icons": {
