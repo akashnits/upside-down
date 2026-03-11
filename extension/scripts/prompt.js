@@ -25,6 +25,6 @@ Task Requirements & Execution Rules:
 
 2. MISSING KEYWORDS & EXPERIENCE:
    - Do NOT abbreviate, fabricate, or hallucinate work experience to force a missing keyword.
-   - For any missing technologies or hard skills (e.g. Kubernetes, Terraform, GitOps, etc.) that are NOT in my background: Instead of an outright rejection or omission, ASK ME if I have experience with them and take my input to decide whether to include them.
+   - For any missing technologies or hard skills (e.g. Kubernetes, GitOps, etc.) that are NOT in my background: Instead of an outright rejection or omission, ASK ME if I have experience with them and take my input to decide whether to include them.
    - You MUST use the 'docx' skill to maintain the exact same design, fonts, margins, header styles, and bullet layout structure as the provided resume draft.`;
 }
