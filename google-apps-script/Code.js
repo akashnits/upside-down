@@ -125,7 +125,6 @@ function doPost(e) {
         JSON.stringify({
           success: true,
           gistUrl: gistUrl, 
-          notionUrl: pageUrl,
           resumeUrl: newResumeUrl || (PROPERTIES.getProperty("RESUME_DOC_ID") ? `https://docs.google.com/document/d/${PROPERTIES.getProperty("RESUME_DOC_ID")}/edit` : "")
         }),
       ).setMimeType(ContentService.MimeType.JSON);
