@@ -85,6 +85,7 @@ function doPost(e) {
         try {
           data.gistUrl = gistUrl;
           data.resumeUrl = newResumeUrl;
+          data.atsHistory = existingEntry.atsHistory || "";
           updateNotionPage(existingEntry.pageId, data);
           Logger.log(`[INFO] Updated existing Notion entry: ${existingEntry.pageId}`);
         } catch (err) {
@@ -193,10 +194,14 @@ function findNotionEntry(jobId) {
   if (data.results && data.results.length > 0) {
     const page = data.results[0];
     const resumeLink = page.properties["Resume Link"];
+    const atsHistoryProp = page.properties["ATS History"];
+    const atsHistory = (atsHistoryProp && atsHistoryProp.rich_text && atsHistoryProp.rich_text.length > 0)
+      ? atsHistoryProp.rich_text[0].plain_text : "";
     Logger.log(`[INFO] Found existing Notion entry for Job ID: ${jobId}`);
     return {
       pageId: page.id,
-      resumeUrl: (resumeLink && resumeLink.url) || null
+      resumeUrl: (resumeLink && resumeLink.url) || null,
+      atsHistory: atsHistory
     };
   }
   
@@ -212,15 +217,20 @@ function updateNotionPage(pageId, data) {
   if (!token) throw new Error("NOTION_API_KEY not set");
 
   const analysis = data.analysis;
+  const score = Math.round(analysis.atsScore || 0);
+  const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+  const prevHistory = data.atsHistory || "";
+  const newHistory = prevHistory ? `${prevHistory} → ${score}% (${today})` : `${score}% (${today})`;
 
   const payload = {
     properties: {
       "Decision": { select: { name: analysis.decision || "MAYBE" } },
       "Confidence": { select: { name: analysis.confidence || "MEDIUM" } },
       "ATS Score": { number: (Math.round((analysis.atsScore || 0) * 100) / 100) / 100 },
+      "ATS History": { rich_text: [{ text: { content: newHistory } }] },
       "Gist Link": { url: data.gistUrl || null },
       "Resume Link": { url: data.resumeUrl || null },
-      "Date": { date: { start: new Date().toISOString().split('T')[0] } }
+      "Date": { date: { start: today } }
     }
   };
 
@@ -587,6 +597,7 @@ function saveToNotion(data, isRetry = false) {
       "Job ID": { rich_text: [{ text: { content: data.jobId || "Unknown" } }] },
       "Gist Link": { url: data.gistUrl || null },
       "Resume Link": { url: data.resumeUrl || null },
+      "ATS History": { rich_text: [{ text: { content: `${Math.round(analysis.atsScore || 0)}% (${new Date().toLocaleDateString('en-CA')})` } }] },
       "Status": { select: { name: "To Review" } },
       "Date": { date: { start: new Date().toISOString().split('T')[0] } }
     }
@@ -636,6 +647,7 @@ function initNotionDatabase(dbId, token) {
       "Job ID": { "rich_text": {} },
       "Gist Link": { "url": {} },
       "Resume Link": { "url": {} },
+      "ATS History": { "rich_text": {} },
       "Status": { "select": { "options": [{ "name": "To Review", "color": "gray" }, { "name": "Applied", "color": "blue" }, { "name": "Interview", "color": "purple" }, { "name": "Rejected", "color": "red" }] } },
       "Date": { "date": {} }
     }
