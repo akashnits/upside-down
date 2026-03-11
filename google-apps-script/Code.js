@@ -17,12 +17,13 @@ function doPost(e) {
       // 1. Try to fetch tailored resume from Notion, fall back to base resume
       let resumeText = "";
       let resumeSource = "base";
+      let existingEntry = null;
       
       if (data.jobId) {
         try {
-          const existing = findNotionEntry(data.jobId);
-          if (existing && existing.resumeUrl) {
-            resumeText = getDocTextFromUrl(existing.resumeUrl);
+          existingEntry = findNotionEntry(data.jobId);
+          if (existingEntry && existingEntry.resumeUrl) {
+            resumeText = getDocTextFromUrl(existingEntry.resumeUrl);
             resumeSource = "tailored";
             Logger.log(`[INFO] Using tailored resume from Notion for Job ID: ${data.jobId}`);
           }
@@ -40,6 +41,19 @@ function doPost(e) {
       // 2. Analyze
       const analysis = analyzeJob(jobDescription, resumeText);
       Logger.log(`[INFO] Analysis complete. Decision: ${analysis.decision}`);
+
+      // 3. Update ATS Score + History in Notion (if entry exists)
+      if (existingEntry) {
+        try {
+          updateNotionPage(existingEntry.pageId, {
+            analysis: analysis,
+            atsHistory: existingEntry.atsHistory || ""
+          });
+          Logger.log(`[INFO] Updated ATS Score & History in Notion for Job ID: ${data.jobId}`);
+        } catch (err) {
+          Logger.log(`[WARN] Could not update ATS in Notion: ${err.toString()}`);
+        }
+      }
 
       return ContentService.createTextOutput(
         JSON.stringify({
