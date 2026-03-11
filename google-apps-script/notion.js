@@ -60,10 +60,14 @@ function updateNotionPage(pageId, data) {
       "Decision": { select: { name: analysis.decision || "MAYBE" } },
       "Confidence": { select: { name: analysis.confidence || "MEDIUM" } },
       "ATS Score": { number: (Math.round((analysis.atsScore || 0) * 100) / 100) / 100 },
-      "Gist Link": { url: data.gistUrl || null },
       "Date": { date: { start: new Date().toISOString().split('T')[0] } }
     }
   };
+
+  // Only update URL links if valid URLs were passed (prevents wiping them on early re-analysis)
+  if (data.gistUrl) {
+    payload.properties["Gist Link"] = { url: data.gistUrl };
+  }
 
   // Only update Resume Link if a valid URL was passed
   if (data.resumeUrl) {
