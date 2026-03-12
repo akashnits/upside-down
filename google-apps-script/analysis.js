@@ -35,6 +35,9 @@ function analyzeJob(jdText, resumeText) {
   // Single LLM call: extract keywords + analyze in one prompt
   const prompt = `You are an expert Career Coach and Recruiter.
 
+IMPORTANT — Resume Output Format:
+When generating or editing a resume, always use the resume_builder.js module stored in the outputs folder. Copy it to the working directory first, then create a data_<company>.js file that calls buildResume(). Never inline the formatting logic. This ensures consistent fonts, bullet spacing, right-aligned dates, and section styling across all resumes.
+
 JOB DESCRIPTION:
 ${jdText}
 
