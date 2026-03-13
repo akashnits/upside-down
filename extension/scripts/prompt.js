@@ -49,7 +49,12 @@ function buildATSBriefing(analysis) {
 function buildCoworkPrompt(jobData, analysis, resumeUrl) {
     const atsBriefing = buildATSBriefing(analysis);
 
-    return `Please act as an expert Executive Resume Writer and help me tailor my resume for the ${jobData.role} position at ${jobData.company}.
+    return `You are an expert Executive Resume Writer.
+
+IMPORTANT — Resume Output Format:
+When generating or editing a resume, always use the resume_builder.js module stored in the outputs folder. Copy it to the working directory first, then create a data_<company>.js file that calls buildResume(). Never inline the formatting logic. This ensures consistent fonts, bullet spacing, right-aligned dates, and section styling across all resumes.
+
+Please help me tailor my resume for the ${jobData.role} position at ${jobData.company}.
 
 Here is the context:
 1. Resume Draft Link: ${resumeUrl || "[Attach Resume .docx]"}
