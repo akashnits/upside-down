@@ -1,90 +1,89 @@
-# 🔮 Upside Down - Resume Assistant
+# 🔮 Upside Down - AI Resume Copilot
 
-A Chrome Extension that analyzes LinkedIn job descriptions against your resume using AI, providing actionable insights and ATS score optimization.
+Built for the modern job seeker. **Upside Down** is a high-performance Chrome Extension and Google Apps Script backend that transforms LinkedIn into a powerful career-hunting command center.
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-6e56cf.svg)
+![Version](https://img.shields.io/badge/version-2.0.0-6e56cf.svg)
 
-## Features
+---
 
-- 📊 **ATS Score Calculation** - Real keyword matching (not AI guesses)
-- 📝 **Tailored Resume Summary** - AI-generated summary to boost ATS score
-- 🚫 **Rejection Reasons** - What might cause a recruiter to pass
-- ✅ **High-ROI Fixes** - Actionable checklist before applying
-- 💾 **Save & Track** - Export analysis to GitHub Gist + Google Sheets
+## 🚀 Key Features
 
-> 📖 **[Detailed Setup Instructions →](instructions.md)**
+- 📊 **Deterministic ATS Engine** — Real-time scoring using **BM25**, stemming, section weighting, and a mini-taxonomy. No AI "guesses," just pure data.
+- 🤖 **Multi-LLM Analysis** — Powered by Gemini and Mistral via OpenRouter. Extracts keywords and generates deep insights in a single pass.
+- 📓 **Notion Integration** — One-click export to your Job Tracking board. Automatically builds a rich Insight Card within your Notion database.
+- 📝 **Resume Tailoring (Cowork)** — Deep integration with the **Cowork** ecosystem for precision resume editing using `resume_builder.js` schemas.
+- 🔍 **Voyager Scraping** — High-stability job extraction that taps into LinkedIn's internal data APIs.
 
-## Architecture
+---
 
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Chrome Ext     │────▶│   Google Apps   │────▶│   Mistral AI    │
-│  (LinkedIn)     │     │   Script        │     │   (Analysis)    │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-                               │
-                               ▼
-                        ┌─────────────────┐
-                        │  GitHub Gists   │
-                        │  Google Sheets  │
-                        └─────────────────┘
-```
+## 🏗️ Architecture
 
-## Setup
+```mermaid
+graph LR
+    subgraph "Browser (LinkedIn)"
+    EXT[Chrome Extension]
+    EXT --> SC[Voyager Scraper]
+    EXT --> MOD[Side Panel UI]
+    end
 
-### 1. Google Apps Script
+    subgraph "Backend (Google Apps Script)"
+    GAS[GAS Router]
+    ATS[ATS Engine]
+    LLM[LLM Analysis]
+    MODS[Integrations]
+    GAS --> LLM
+    GAS --> ATS
+    GAS --> MODS
+    end
 
-1. Go to [script.google.com](https://script.google.com) → New Project
-2. Copy contents of `google-apps-script/Code.gs` and `config.gs`
-3. Set Script Properties (Project Settings → Script Properties):
-   - `MISTRAL_API_KEY` - Get from [console.mistral.ai](https://console.mistral.ai)
-   - `GITHUB_TOKEN` - GitHub PAT with `gist` scope
-   - `RESUME_DOC_ID` - Your Google Doc ID
-   - `SHEET_ID` - (Optional) Google Sheet ID for logging
-4. Deploy → New deployment → Web app → Anyone → Deploy
-5. Copy the Web App URL
-
-### 2. Chrome Extension
-
-1. Copy `extension/config.example.js` → `extension/config.js`
-2. Update `GAS_URL` with your deployed Apps Script URL
-3. Go to `chrome://extensions` → Enable Developer Mode
-4. Click "Load unpacked" → Select the `extension` folder
-
-## Usage
-
-1. Navigate to any LinkedIn job page
-2. Click the purple **🔍 Analyze Job** button (top-right)
-3. Wait for AI analysis (~10 seconds)
-4. Review insights and click **💾 Save & Track** to export
-
-## Configuration
-
-### config.gs (Google Apps Script)
-```javascript
-const CONFIG = {
-  MISTRAL_API_URL: "https://api.mistral.ai/v1/chat/completions",
-  MODELS: {
-    KEYWORD_EXTRACTION: "mistral-small-latest",
-    MAIN_ANALYSIS: "mistral-large-latest"
-  }
-};
+    subgraph "External Ecosystem"
+    OR[OpenRouter]
+    NOT[Notion DB]
+    COW[Cowork Generator]
+    LLM --> OR
+    MODS --> NOT
+    MODS --> COW
+    end
 ```
 
-### config.js (Extension)
-```javascript
-const CONFIG = {
-  GAS_URL: "YOUR_DEPLOYED_APPS_SCRIPT_URL"
-};
-```
+---
 
-## Rate Limits
+## 🛠️ Components
 
-Using Mistral AI free tier:
-- **500,000 tokens/minute**
-- **1 billion tokens/month**
+### 🖥️ Chrome Extension
 
-This is virtually unlimited for normal usage.
+Modern, non-blocking UI that slides into your job hunt.
 
-## License
+- **Scraper**: Reliable extraction using `scraper.js`.
+- **Logic**: Modularized into `main.js`, `prompt.js`, and `ui.js`.
+- **Styles**: Premium visuals in `styles.js`.
 
-MIT
+### ☁️ Google Apps Script (Backend)
+
+High-concurrency, modularized GAS environment managed via `clasp`.
+
+- **`analysis.js`**: LLM orchestration and keyword extraction.
+- **`atsEngine.js`**: The scoring brain (BM25, stemming, taxonomy).
+- **`notion.js`**: Seamless connection to Notion's Block API.
+- **`router.js`**: Central entry point for all endpoint requests.
+
+---
+
+## ⚙️ Setup & Deployment
+
+1.  **Backend**: Navigate to `google-apps-script/` and run `clasp push`.
+2.  **Config**: Set your `OPENROUTER_API_KEY` and `NOTION_TOKEN` in GAS Script Properties.
+3.  **Extension**: Load the `extension/` folder as an unpacked extension in Developer Mode.
+
+> 💡 **Pro-Tip**: Use the `deploy-gas` skill for one-click updates to the backend.
+
+---
+
+## 📜 License
+
+Distributed under the MIT License. See `LICENSE` for more information.
+
+---
+
+_“Turning the job hunt right-side up.”_
