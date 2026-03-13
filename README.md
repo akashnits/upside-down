@@ -13,7 +13,6 @@ Built for the modern job seeker. **Upside Down** is a high-performance Chrome Ex
 - 🤖 **Multi-LLM Analysis** — Powered by Gemini and Mistral via OpenRouter. Extracts keywords and generates deep insights in a single pass.
 - 📓 **Notion Integration** — One-click export to your Job Tracking board. Automatically builds a rich Insight Card within your Notion database.
 - 📝 **Resume Tailoring (Cowork)** — Deep integration with the **Cowork** ecosystem for precision resume editing using `resume_builder.js` schemas.
-- 🔍 **Voyager Scraping** — High-stability job extraction that taps into LinkedIn's internal data APIs.
 
 ---
 
@@ -23,7 +22,7 @@ Built for the modern job seeker. **Upside Down** is a high-performance Chrome Ex
 graph LR
     subgraph "Browser (LinkedIn)"
     EXT[Chrome Extension]
-    EXT --> SC[Voyager Scraper]
+    EXT --> DOM[DOM Scraper]
     EXT --> MOD[Side Panel UI]
     end
 
