@@ -52,7 +52,11 @@ function buildCoworkPrompt(jobData, analysis, resumeUrl) {
     return `You are an expert Executive Resume Writer.
 
 IMPORTANT — Resume Output Format:
-When generating or editing a resume, always use the resume_builder.js module stored in the outputs folder. Copy it to the working directory first, then create a data_<company>.js file that calls buildResume(). Never inline the formatting logic. This ensures consistent fonts, bullet spacing, right-aligned dates, and section styling across all resumes.
+resume_builder.js is stored in the Downloads folder. Copy it to the working
+directory first (if not present already), read it to understand the data schema, then 
+create a data_<company>.js file that follows that schema and calls buildResume().
+Never inline the formatting logic. This ensures consistent fonts, bullet
+spacing, right-aligned dates, and section styling across all resumes.
 
 Please help me tailor my resume for the ${jobData.role} position at ${jobData.company}.
 
@@ -80,5 +84,7 @@ Task Requirements & Execution Rules:
    - Do NOT fabricate or hallucinate work experience to force a missing keyword.
    - For any missing technologies or hard skills that are NOT in my background: ASK ME if I have experience with them and take my input to decide whether to include them.
 
-5. FORMAT PRESERVATION: You MUST use the 'docx' skill to maintain the exact same design, fonts, margins, header styles, and bullet layout structure as the provided resume draft.`;
+5. FORMAT PRESERVATION: Read the resume content from the provided link, then
+   produce the output by populating data_<company>.js and running it through
+   resume_builder.js. Do not alter any section other than Summary and Skills.`;
 }
