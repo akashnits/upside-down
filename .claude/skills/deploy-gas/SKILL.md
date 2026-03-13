@@ -18,7 +18,7 @@ When asked to deploy the Google Apps Script backend, follow these steps:
 - **Clasp config:** `google-apps-script/.clasp.json`
 - **Script ID:** `1Ybq1qPhyhDGrf-qaWXbFpy1Ikgxu7kDUnbBxBM7mWqEnVwgU4-CDhAm8`
 - **Deployment ID:** `AKfycbz2dx-2BH2I_Nnj_forO_qwWN8L4djLs-BFhpYrpTmtp3TBnZGxnE8okeMBPbWl_fQq`
-- **Files pushed:** `Code.js`, `config.js`, `appsscript.json`
+- **Files pushed:** `analysis.js`, `atsEngine.js`, `config.js`, `integrations.js`, `notion.js`, `resume.js`, `router.js`, `appsscript.json`
 
 ## Steps
 
