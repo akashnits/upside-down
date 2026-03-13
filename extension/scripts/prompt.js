@@ -86,5 +86,6 @@ Task Requirements & Execution Rules:
 
 5. FORMAT PRESERVATION: Read the resume content from the provided link, then
    produce the output by populating data_<company>.js and running it through
-   resume_builder.js. Do not alter any section other than Summary and Skills.`;
+   resume_builder.js. Do not alter any section other than Summary and Skills.
+   At the end, visually verify in Google Docs-friendly format`;
 }
