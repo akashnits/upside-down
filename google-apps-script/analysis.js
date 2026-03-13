@@ -42,13 +42,20 @@ RESUME:
 ${resumeText}
 
 Task: Analyze this job application.
-Step 1: Extract all required skills, technologies, and qualifications as keywords.
+Step 1: Extract all required skills, technologies, and qualifications as priority-tiered keywords.
+  - "required": Skills/technologies explicitly listed as required, must-have, or core responsibilities.
+  - "preferred": Skills listed as preferred, nice-to-have, or mentioned in bonus/plus sections.
+  - "nice_to_have": Skills implied by the role context but not explicitly stated (e.g., "REST APIs" implied by "backend development").
 Step 2: Use those keywords to evaluate resume fit.
 Step 3: Provide actionable insights.
 
 Output strict JSON in this format:
 {
-  "keywords": ["Python", "AWS", ...],
+  "keywords": {
+    "required": ["Python", "AWS", ...],
+    "preferred": ["Terraform", ...],
+    "nice_to_have": ["GraphQL", ...]
+  },
   "markdown": "# Company — Role ... (The full Insight Card markdown)",
   "decision": "APPLY" | "MAYBE" | "SKIP",
   "confidence": "HIGH" | "MEDIUM" | "LOW",
@@ -159,12 +166,38 @@ The Markdown Insight Card MUST follow this structure EXACTLY (DO NOT include Dec
     throw new Error("Failed to parse AI response as JSON");
   }
 
-  // Extract keywords from LLM response, then calculate ATS score deterministically
-  const keywords = analysis.keywords || [];
-  const ats = calculateATSScore(keywords, resumeText);
+  // Extract tiered keywords from LLM response, convert to weighted array
+  const tieredKeywords = analysis.keywords || {};
+  const required = tieredKeywords.required || [];
+  const preferred = tieredKeywords.preferred || [];
+  const niceToHave = tieredKeywords.nice_to_have || [];
+
+  // Backward compat: if keywords is a flat array (old format), treat all as required
+  const weightedKeywords = Array.isArray(analysis.keywords)
+    ? analysis.keywords.map(k => ({ term: k, weight: 1.0 }))
+    : [
+        ...required.map(k => ({ term: k, weight: 1.0 })),
+        ...preferred.map(k => ({ term: k, weight: 0.6 })),
+        ...niceToHave.map(k => ({ term: k, weight: 0.3 })),
+      ];
+
+  // Flat keyword list for display
+  const allKeywords = weightedKeywords.map(k => k.term);
+
+  Logger.log(`[ATS] Keywords — required: ${required.length}, preferred: ${preferred.length}, nice_to_have: ${niceToHave.length}`);
+
+  const ats = calculateATSScore(weightedKeywords, resumeText);
   Logger.log(
-    `[ATS] Score: ${ats.score}% (${ats.matched.length}/${keywords.length} keywords)`,
+    `[ATS] Score: ${ats.score}% (${ats.matched.length}/${allKeywords.length} keywords)`,
   );
+
+  // Normalize keywords to flat array for downstream consumers (extension display)
+  analysis.keywords = allKeywords;
+
+  // Pass tier data for priority-grouped display in extension prompt
+  if (!Array.isArray(tieredKeywords)) {
+    analysis.atsKeywordTiers = { required, preferred, nice_to_have: niceToHave };
+  }
 
   // Add ATS data to response — use BM25 as the single ATS score
   analysis.atsScore = ats.bm25Score;

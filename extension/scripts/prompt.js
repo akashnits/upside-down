@@ -31,8 +31,25 @@ function buildATSBriefing(analysis) {
         lines.push(`\nWeak matches (strengthen to exact keyword): ${weakMatches.join(", ")}`);
     }
 
+    // Group missing keywords by priority tier if available
     const missing = analysis.atsMissing || [];
-    if (missing.length) {
+    const tieredKw = analysis.atsKeywordTiers;
+    if (missing.length && tieredKw) {
+        const missingSet = new Set(missing.map(k => k.toLowerCase()));
+        const missingRequired = (tieredKw.required || []).filter(k => missingSet.has(k.toLowerCase()));
+        const missingPreferred = (tieredKw.preferred || []).filter(k => missingSet.has(k.toLowerCase()));
+        const missingNice = (tieredKw.nice_to_have || []).filter(k => missingSet.has(k.toLowerCase()));
+
+        if (missingRequired.length) {
+            lines.push(`\n🔴 Missing REQUIRED keywords (${missingRequired.length}): ${missingRequired.join(", ")}`);
+        }
+        if (missingPreferred.length) {
+            lines.push(`\n🟡 Missing PREFERRED keywords (${missingPreferred.length}): ${missingPreferred.join(", ")}`);
+        }
+        if (missingNice.length) {
+            lines.push(`\n🟢 Missing NICE-TO-HAVE keywords (${missingNice.length}): ${missingNice.join(", ")}`);
+        }
+    } else if (missing.length) {
         lines.push(`\nMissing keywords (${missing.length}): ${missing.join(", ")}`);
     }
 

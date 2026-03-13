@@ -203,6 +203,8 @@ function bm25TermScore(tf, docLength, avgDocLength) {
 /**
  * Calculate ATS score by matching keywords against resume.
  * Uses BM25-inspired scoring, stemming, synonym taxonomy, section weighting, and n-gram decomposition.
+ * @param {Array} keywords - Array of {term, weight} objects or plain strings (backward compat)
+ * @param {string} resumeText - The resume text to match against
  */
 function calculateATSScore(keywords, resumeText) {
   const matched = [];
@@ -210,6 +212,11 @@ function calculateATSScore(keywords, resumeText) {
   const keywordFrequency = {};
   const matchMethod = {};
   const sectionHits = {};
+
+  // Normalize input: accept both [{term, weight}] and ["keyword"] formats
+  const weightedKeywords = keywords.map(k =>
+    typeof k === "string" ? { term: k, weight: 1.0 } : k
+  );
 
   // Build reverse lookup: term -> canonical group name
   const termToGroup = {};
@@ -245,10 +252,10 @@ function calculateATSScore(keywords, resumeText) {
 
   // --- Per-keyword BM25 scores ---
   let bm25Sum = 0;
-  let bm25Max = 0; // Theoretical max if every keyword scored perfectly
+  let bm25Max = 0; // Theoretical max if every keyword scored perfectly (sum of weights)
   const methodCounts = { exact: 0, synonym: 0, stem: 0, ngram: 0 };
 
-  keywords.forEach((keyword) => {
+  weightedKeywords.forEach(({ term: keyword, weight }) => {
     const kwLower = keyword.toLowerCase();
     const kwNormalized = normalizeText(kwLower);
 
@@ -260,8 +267,8 @@ function calculateATSScore(keywords, resumeText) {
       return; // Don't count as matched OR missing
     }
 
-    // Theoretical max: every keyword gets perfect BM25 + exact multiplier
-    bm25Max += 1.0;
+    // Theoretical max: every keyword gets perfect BM25 + exact multiplier, scaled by weight
+    bm25Max += weight;
 
     let method = null;
     let tf = 0;
@@ -338,9 +345,9 @@ function calculateATSScore(keywords, resumeText) {
       // Claim synonym group
       if (groupName) claimedGroups.add(groupName);
 
-      // BM25 contribution with match-type multiplier
+      // BM25 contribution with match-type multiplier and priority weight
       const bm25Raw = bm25TermScore(tf, docLength, avgDocLength);
-      bm25Sum += bm25Raw * MATCH_MULTIPLIER[method];
+      bm25Sum += bm25Raw * MATCH_MULTIPLIER[method] * weight;
     } else {
       missing.push(keyword);
     }

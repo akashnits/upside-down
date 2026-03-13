@@ -1,11 +1,18 @@
 // Configuration - Constants (safe to commit)
 const CONFIG = {
   // --- 🎛️ Provider Selection ---
-  // Options: "GEMINI" or "MISTRAL" (Both via OpenRouter)
-  PROVIDER: "GEMINI",
+  // Options: "GEMINI", "OPENAI", or "NVIDIA" (All via OpenRouter)
+  PROVIDER: "OPENAI",
 
   // --- 🛠️ Provider Settings ---
   PROVIDERS: {
+    OPENAI: {
+      API_URL: "https://openrouter.ai/api/v1/chat/completions",
+      API_KEY_PROP: "OPENROUTER_API_KEY",
+      MODELS: {
+        ANALYSIS: "openai/gpt-4.1",
+      },
+    },
     GEMINI: {
       API_URL: "https://openrouter.ai/api/v1/chat/completions",
       API_KEY_PROP: "OPENROUTER_API_KEY",
