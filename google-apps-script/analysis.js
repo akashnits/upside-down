@@ -33,10 +33,7 @@ function analyzeJob(jdText, resumeText) {
     throw new Error(`${provider.API_KEY_PROP} not found in Script Properties`);
 
   // Single LLM call: extract keywords + analyze in one prompt
-  const prompt = `You are an expert Career Coach and Recruiter.
-
-IMPORTANT — Resume Output Format:
-When generating or editing a resume, always use the resume_builder.js module stored in the outputs folder. Copy it to the working directory first, then create a data_<company>.js file that calls buildResume(). Never inline the formatting logic. This ensures consistent fonts, bullet spacing, right-aligned dates, and section styling across all resumes.
+  const insightPrompt = `You are an expert Career Coach and Recruiter.
 
 JOB DESCRIPTION:
 ${jdText}
@@ -105,7 +102,7 @@ The Markdown Insight Card MUST follow this structure EXACTLY (DO NOT include Dec
         content:
           "You are a career coach. Always respond with valid JSON only, no markdown code blocks.",
       },
-      { role: "user", content: prompt },
+      { role: "user", content: insightPrompt },
     ],
     temperature: CONFIG.TEMPERATURE.ANALYSIS,
     max_tokens: 8192,
