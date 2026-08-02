@@ -1,41 +1,50 @@
-// Scraper — Extracts job data from LinkedIn pages
-// Strategy: Voyager API data first (Phase 3), DOM fallback
+// Scraper — Extracts job data from LinkedIn's current job details DOM
 
 function scrapeJob() {
-    const getText = (selectors) => {
-        for (const selector of selectors) {
-            const el = document.querySelector(selector);
-            if (el && el.innerText.trim()) return el.innerText.trim();
-        }
-        return null;
+    const cleanText = (text) => {
+        return (text || "")
+            .replace(/\u00a0/g, " ")
+            .replace(/[ \t]+\n/g, "\n")
+            .replace(/\n{3,}/g, "\n\n")
+            .trim();
     };
 
+    const parseTitle = () => {
+        const parts = document.title
+            .split("|")
+            .map(cleanText)
+            .filter(Boolean);
+
+        return {
+            role: parts[0] || "",
+            company: parts[1] && parts[1] !== "LinkedIn" ? parts[1] : "",
+        };
+    };
+
+    const getJobDescription = () => {
+        const aboutJob = document.querySelector('[id^="JobDetails_AboutTheJob_"]');
+        return cleanText(aboutJob?.innerText).replace(/^About the job\s*/i, "").trim();
+    };
+
+    const getJobId = () => {
+        const urlMatch =
+            window.location.href.match(/\/view\/(\d+)/) ||
+            window.location.href.match(/currentJobId=(\d+)/);
+        if (urlMatch) return urlMatch[1];
+
+        const aboutJob = document.querySelector('[id^="JobDetails_AboutTheJob_"]');
+        return aboutJob?.id.match(/JobDetails_AboutTheJob_(\d+)/)?.[1] || `UD-${Date.now()}`;
+    };
+
+    const titleData = parseTitle();
+
     return {
-        role: getText([
-            '.job-details-jobs-unified-top-card__job-title',
-            '.jobs-unified-top-card__job-title',
-            '.t-24.t-bold.jobs-unified-top-card__job-title',
-            '[class*="job-title"]',
-            'h1'
-        ]) || "Unknown Role",
-
-        company: getText([
-            '.job-details-jobs-unified-top-card__company-name',
-            '.jobs-unified-top-card__company-name',
-            '.jobs-unified-top-card__company-name a',
-            '[class*="company-name"]'
-        ]) || "Unknown Company",
-
-        jobDescription: getText([
-            '#job-details',
-            '.jobs-description',
-            '.jobs-description-content__text',
-            '.jobs-box__html-content',
-            '[class*="description"] [class*="content"]'
-        ]) || "",
+        role: cleanText(document.querySelector("h1")?.innerText) || titleData.role || "Unknown Role",
+        company: titleData.company || "Unknown Company",
+        jobDescription: getJobDescription(),
 
         jobUrl: window.location.href,
-        jobId: (window.location.href.match(/\/view\/(\d+)/) || window.location.href.match(/currentJobId=(\d+)/) || [null, `UD-${Date.now()}`])[1],
-        source: 'dom'
+        jobId: getJobId(),
+        source: "linkedin-current-dom"
     };
 }
