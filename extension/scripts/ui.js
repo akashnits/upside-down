@@ -1,6 +1,83 @@
 // UI — Slide-in panel and all modal states
 // Non-blocking: user can still interact with LinkedIn while panel is open
 
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function renderAnalysisScan(analysis) {
+    const brief = analysis.tailoringBrief || analysis.analysisBrief || {};
+    const ats = brief.ats || {};
+    const current = typeof ats.currentCoverage === 'number' ? ats.currentCoverage : analysis.atsScore;
+    const baseline = typeof ats.baselineCoverage === 'number' ? ats.baselineCoverage : analysis.baselineScore;
+    const delta = typeof ats.delta === 'number' ? ats.delta : analysis.scoreDelta;
+    const score = typeof current === 'number' ? `${current}%` : '?';
+    const change = typeof baseline === 'number' && typeof delta === 'number'
+        ? `Baseline ${baseline}% · ${delta >= 0 ? '+' : ''}${delta}%`
+        : 'Baseline pending';
+    const gainByKeyword = {};
+
+    ['required', 'preferred', 'nice_to_have'].forEach(tier => {
+        (brief.missingKeywords?.[tier] || []).forEach(item => {
+            gainByKeyword[item.keyword] = item.expectedGain;
+        });
+    });
+    (brief.weakMatches || []).forEach(item => {
+        gainByKeyword[item.keyword] = item.expectedGainIfExact;
+    });
+
+    const strengths = (brief.strongMatches || []).slice(0, 4).map(item => {
+        const sections = item.sections?.length ? ` · ${item.sections.join(' + ')}` : '';
+        return `<div style="margin:3px 0;">${escapeHtml(item.keyword)}<span style="color:#6b7280;">${escapeHtml(sections)}</span></div>`;
+    }).join('') || '<div style="color:#6b7280;">No strong matches yet</div>';
+
+    const gaps = [
+        ...(brief.missingKeywords?.required || []),
+        ...(brief.missingKeywords?.preferred || []),
+        ...(brief.weakMatches || []),
+    ].slice(0, 4).map(item => {
+        const keyword = item.keyword;
+        const gain = gainByKeyword[keyword];
+        const label = item.method ? `${keyword} · weak` : `${keyword} · missing`;
+        return `<div style="margin:3px 0;">${escapeHtml(label)}${typeof gain === 'number' ? `<span style="color:#0A66C2;"> · +${escapeHtml(gain)}%</span>` : ''}</div>`;
+    }).join('') || '<div style="color:#6b7280;">No critical gaps</div>';
+
+    const fixes = (brief.highRoiFixes || []).slice(0, 3).map(item => {
+        const action = typeof item === 'string' ? item : item.action;
+        const keywords = typeof item === 'object' && Array.isArray(item.keywords) ? item.keywords : [];
+        const gain = typeof item === 'object' && typeof item.expectedGain === 'number'
+            ? item.expectedGain
+            : keywords.map(keyword => gainByKeyword[keyword]).find(value => typeof value === 'number');
+        return `<div style="margin:3px 0;">${typeof gain === 'number' ? `<span style="color:#0A66C2;">+${escapeHtml(gain)}% </span>` : ''}${escapeHtml(action || 'Review this action')}</div>`;
+    }).join('') || '<div style="color:#6b7280;">No high-ROI fixes identified</div>';
+
+    const sections = [
+        ['STRENGTHS', strengths],
+        ['GAPS', gaps],
+        ['BEST MOVES', fixes],
+    ].map(([label, content]) => `
+        <div style="margin-top:14px;">
+            <div style="font-size:11px; font-weight:700; letter-spacing:0.08em; color:#6b7280; margin-bottom:5px;">${label}</div>
+            <div style="font-size:13px; line-height:1.45;">${content}</div>
+        </div>`).join('');
+
+    return `
+        <div style="background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:16px; margin-bottom:16px;">
+            <div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px;">
+                <div style="font-size:24px; font-weight:700; color:#111827;">${escapeHtml(brief.decision || analysis.decision || 'MAYBE')}</div>
+                <div style="font-size:21px; font-weight:700; color:#0A66C2;">${escapeHtml(score)}</div>
+            </div>
+            <div style="margin-top:4px; color:#6b7280; font-size:12px;">${escapeHtml(change)} · ${escapeHtml(brief.effort || analysis.effort || 'MEDIUM')} effort · Section quality ${escapeHtml(ats.sectionQuality ?? analysis.atsSectionScore ?? '?')}%</div>
+            ${brief.rejectionReasons?.[0] ? `<div style="margin-top:12px; font-size:13px; color:#374151;">${escapeHtml(brief.rejectionReasons[0])}</div>` : ''}
+            ${sections}
+        </div>`;
+}
+
 function createPanel() {
     // Remove existing panel if present
     const existing = document.getElementById('upside-down-panel');
@@ -92,27 +169,9 @@ function createPanel() {
             const result = document.getElementById('ud-result');
             result.style.display = 'block';
 
-            const emoji = analysis.decision === 'APPLY' ? '✅' : analysis.decision === 'SKIP' ? '⛔' : '⚠️';
-            const color = analysis.decision === 'APPLY' ? '#155724' : analysis.decision === 'SKIP' ? '#721c24' : '#856404';
-            const bg = analysis.decision === 'APPLY' ? '#d4edda' : analysis.decision === 'SKIP' ? '#f8d7da' : '#fff3cd';
-            const currentScore = typeof analysis.currentScore === 'number' ? analysis.currentScore : analysis.atsScore;
-            const scoreText = typeof currentScore === 'number' ? `${currentScore}%` : '?';
-            const comparisonText = typeof analysis.baselineScore === 'number'
-                ? `Baseline: ${analysis.baselineScore}% | Change: ${analysis.scoreDelta >= 0 ? '+' : ''}${analysis.scoreDelta}%`
-                : 'Baseline will be saved with this job';
-            const sectionText = typeof analysis.atsSectionScore === 'number'
-                ? ` | Section quality: ${analysis.atsSectionScore}%`
-                : '';
-
             result.innerHTML = `
-                <div style="text-align:center; background:${bg}; color:${color}; padding:14px; border-radius:12px; margin-bottom:16px; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-                    <div style="font-size:28px; font-weight:bold;">${emoji} ${analysis.decision}</div>
-                    <div style="margin-top:6px; font-size:13px;">Confidence: ${analysis.confidence} | Effort: ${analysis.effort} | ATS coverage: ${scoreText}${sectionText}</div>
-                    <div style="margin-top:4px; font-size:12px;">${comparisonText}</div>
-                </div>
-                <div style="background:#fff; padding:16px; border-radius:12px; font-size:13px; max-height:calc(100vh - 260px); overflow-y:auto; margin-bottom:16px; line-height:1.6; border:1px solid #e5e7eb;">
-                    ${formatMarkdown(analysis.markdown.substring(0, 5000))}
-                </div>
+                ${renderAnalysisScan(analysis)}
+                <div style="font-size:12px; color:#6b7280; margin:-4px 0 16px;">Full tailoring guidance is included in the copied Cowork prompt.</div>
                 <div style="display:flex; gap:10px; padding-bottom:20px;">
                     <button id="ud-save" style="flex:1; background:#0A66C2; color:white; border:none; padding:12px; border-radius:8px; cursor:pointer; font-weight:600; font-size:14px; transition:background 0.2s;"
                         onmouseover="this.style.background='#084e96'" onmouseout="this.style.background='#0A66C2'">✨ Create</button>
@@ -217,19 +276,4 @@ function createPanel() {
 
         close: closePanel
     };
-}
-
-// Simple markdown to HTML converter
-function formatMarkdown(md) {
-    return md
-        .replace(/^# (.+)$/gm, '<h2 style="margin:0 0 8px 0; color:#1a1a1a; font-size:17px; border-bottom:2px solid #0A66C2; padding-bottom:6px;">$1</h2>')
-        .replace(/^## (.+)$/gm, '<h3 style="margin:8px 0 6px 0; color:#0A66C2; font-size:15px; font-weight:600;">$1</h3>')
-        .replace(/^\*\*(.+?)\*\*$/gm, '<p style="margin:4px 0; font-weight:600; color:#333;">$1</p>')
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em style="color:#666;">$1</em>')
-        .replace(/^- \[ \] (.+)$/gm, '<div style="margin:3px 0; padding:6px 10px; background:#f0f7ff; border-radius:4px; border-left:3px solid #0A66C2; font-size:13px;">☐ $1</div>')
-        .replace(/^- (.+)$/gm, '<div style="margin:2px 0; padding:2px 0 2px 12px; border-left:2px solid #e0e0e0; font-size:13px;">$1</div>')
-        .replace(/^> (.+)$/gm, '<blockquote style="margin:8px 0; padding:8px 10px; background:#fffbeb; border-left:3px solid #f59e0b; font-size:12px; color:#92400e; border-radius:0 4px 4px 0;">$1</blockquote>')
-        .replace(/---/g, '<hr style="margin:10px 0; border:none; border-top:1px solid #e5e7eb;">')
-        .replace(/\n\n/g, '<br>');
 }

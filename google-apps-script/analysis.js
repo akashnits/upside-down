@@ -176,6 +176,90 @@ Output strict JSON:
   return normalizeRubric(rawRubric, computeJobDescriptionHash(jdText));
 }
 
+function roundScore(value) {
+  return Math.round(value * 10) / 10;
+}
+
+function buildDeterministicBrief(ats, rubric) {
+  const weightedKeywords = rubricToWeightedKeywords(rubric);
+  const totalWeight = weightedKeywords.reduce((sum, item) => sum + Number(item.weight || 0), 0);
+  const tierNames = ["required", "preferred", "nice_to_have"];
+  const weakMethods = new Set(["stem", "ngram"]);
+  const missingSet = new Set(ats.missing.map(term => term.toLowerCase()));
+  const brief = {
+    strongMatches: [],
+    weakMatches: [],
+    missingKeywords: { required: [], preferred: [], nice_to_have: [] },
+    deprioritized: [],
+  };
+
+  tierNames.forEach(tier => {
+    (rubric.keywords[tier] || []).forEach(item => {
+      const method = ats.matchMethod[item.term];
+      const frequency = (ats.keywordFrequency || {})[item.term] || 0;
+      const sections = (ats.sectionHits || {})[item.term] || [];
+      const weight = Number(item.weight || 0);
+
+      if (missingSet.has(item.term.toLowerCase())) {
+        const missingItem = {
+          keyword: item.term,
+          aliases: item.aliases || [],
+          expectedGain: totalWeight ? roundScore((weight / totalWeight) * 100) : 0,
+        };
+        brief.missingKeywords[tier].push(missingItem);
+        if (tier === "nice_to_have") {
+          brief.deprioritized.push({
+            keyword: item.term,
+            expectedGain: missingItem.expectedGain,
+            reason: "Nice-to-have; address after required and preferred terms",
+          });
+        }
+      } else if (weakMethods.has(method)) {
+        brief.weakMatches.push({
+          keyword: item.term,
+          method,
+          frequency,
+          sections,
+          expectedGainIfExact: totalWeight ? roundScore((weight * 0.5 / totalWeight) * 100) : 0,
+        });
+      } else if (method) {
+        brief.strongMatches.push({
+          keyword: item.term,
+          method,
+          frequency,
+          sections,
+        });
+      }
+    });
+  });
+
+  return brief;
+}
+
+function buildCompactAnalysisMarkdown(brief) {
+  const gaps = [
+    ...(brief.missingKeywords.required || []).map(item => `${item.keyword} (required, +${item.expectedGain})`),
+    ...(brief.weakMatches || []).map(item => `${item.keyword} (weak, +${item.expectedGainIfExact})`),
+  ].slice(0, 5);
+  const fixes = (brief.highRoiFixes || []).slice(0, 5).map(item => {
+    const action = typeof item === "string" ? item : item.action;
+    return `- ${action}`;
+  });
+  return [
+    `# ${brief.decision || "MAYBE"} | ATS Coverage ${brief.ats.currentCoverage}%`,
+    `Confidence: ${brief.confidence || "MEDIUM"} | Effort: ${brief.effort || "MEDIUM"}`,
+    "",
+    "## Gaps",
+    gaps.length ? gaps.map(item => `- ${item}`).join("\n") : "- None identified",
+    "",
+    "## High-ROI Fixes",
+    fixes.length ? fixes.join("\n") : "- None identified",
+    "",
+    "## Strong Signals",
+    (brief.strongSignals || []).slice(0, 5).map(item => `- ${item}`).join("\n") || "- None identified",
+  ].join("\n");
+}
+
 /**
  * Analyze a job against a resume using a previously generated rubric.
  */
@@ -189,6 +273,9 @@ function analyzeJob(jdText, resumeText, rubric) {
 
   const weightedKeywords = rubricToWeightedKeywords(rubric);
   const tieredKeywords = rubricToDisplayTiers(rubric);
+  const ats = calculateATSScore(weightedKeywords, resumeText);
+  const deterministicBrief = buildDeterministicBrief(ats, rubric);
+
   const insightPrompt = `You are an expert Career Coach and Recruiter.
 
 JOB DESCRIPTION:
@@ -200,57 +287,44 @@ ${resumeText}
 FIXED ATS RUBRIC:
 ${JSON.stringify(rubric)}
 
-Use the fixed rubric above. Do not extract, add, remove, or reclassify keywords.
-Analyze the job application and provide actionable insights.
+DETERMINISTIC ATS MATCH:
+${JSON.stringify({
+  currentCoverage: ats.score,
+  sectionQuality: ats.sectionScore,
+  ...deterministicBrief,
+})}
 
-Output strict JSON in this format:
+Use the fixed rubric and deterministic match above. Do not extract, add, remove, or reclassify keywords.
+Return concise structured analysis for a resume-writing agent. Do not return markdown.
+
+Output strict JSON:
 {
-  "markdown": "# Company — Role ... (The full Insight Card markdown)",
   "decision": "APPLY" | "MAYBE" | "SKIP",
   "confidence": "HIGH" | "MEDIUM" | "LOW",
-  "effort": "LOW" | "MEDIUM" | "HIGH"
+  "effort": "LOW" | "MEDIUM" | "HIGH",
+  "suggestedSummary": "A 3-4 sentence summary using only supported themes and keywords.",
+  "rejectionReasons": ["Short reason 1", "Short reason 2"],
+  "highRoiFixes": [
+    {
+      "priority": 1,
+      "action": "Short, concrete action",
+      "keywords": ["exact keyword"],
+      "targetSection": "Summary | Skills",
+      "evidenceSource": "Existing resume evidence or confirmation needed",
+      "evidenceStatus": "supported | needs_confirmation | unsupported"
+    }
+  ],
+  "strongSignals": ["Short signal 1", "Short signal 2"]
 }
 
-The Markdown Insight Card MUST follow this structure EXACTLY (DO NOT include Decision/Confidence/Effort/ATS Score — those are shown separately in the UI):
+Rules for this JSON:
+- Prioritize required missing keywords, then weak required matches, then preferred keywords.
+- Use only evidence visible in the resume for supported actions.
+- Mark unsupported technologies as needs_confirmation; never recommend inventing them.
+- Keep each reason, signal, and action concise enough for a quick scan.
+- Do not recommend repeating an already exact keyword solely for ATS scoring.`;
 
-# Company — Role
-
-## 📝 Suggested Resume Summary
-*[Write a 3-4 sentence professional summary that naturally incorporates the key missing skills/technologies from the job description. This should help the candidate boost their ATS score when added to their resume.]*
-
----
-
-## 🚫 Likely Rejection Reasons
-*(What may cause a recruiter to pass in the first scan)*
-
-- [Reason 1]
-- [Reason 2]
-- [Reason 3]
-
----
-
-## ✅ High-ROI Fixes (Checklist)
-*(Do these before applying)*
-
-- [ ] [Actionable fix 1]
-- [ ] [Actionable fix 2]
-
----
-
-## 💪 Strong Signals (Do NOT weaken these)
-
-- [Signal 1]
-- [Signal 2]
-
----
-
-## 📌 Job Context
-
-- **Company:** [Company Name]
-- **Role:** [Role Name]
-- **Analyzed On:** ${new Date().toLocaleDateString('en-CA')}`;
-
-  const analysis = callJsonModel(
+  const modelAnalysis = callJsonModel(
     provider,
     apiKey,
     insightPrompt,
@@ -258,57 +332,64 @@ The Markdown Insight Card MUST follow this structure EXACTLY (DO NOT include Dec
     8192,
   );
 
-  const ats = calculateATSScore(weightedKeywords, resumeText);
-  Logger.log(
-    `[ATS] Coverage: ${ats.score}% (${ats.matched.length}/${weightedKeywords.length} rubric terms)`,
-  );
+  const expectedGainByKeyword = {};
+  ["required", "preferred", "nice_to_have"].forEach(tier => {
+    (deterministicBrief.missingKeywords[tier] || []).forEach(item => {
+      expectedGainByKeyword[item.keyword.toLowerCase()] = item.expectedGain;
+    });
+  });
+  deterministicBrief.weakMatches.forEach(item => {
+    expectedGainByKeyword[item.keyword.toLowerCase()] = item.expectedGainIfExact;
+  });
+  const highRoiFixes = Array.isArray(modelAnalysis.highRoiFixes)
+    ? modelAnalysis.highRoiFixes.slice(0, 5).map(item => {
+        if (typeof item === "string") return item;
+        const keywords = Array.isArray(item.keywords) ? item.keywords : [];
+        const gains = keywords
+          .map(keyword => expectedGainByKeyword[String(keyword).toLowerCase()])
+          .filter(value => typeof value === "number");
+        return {
+          ...item,
+          expectedGain: gains.length ? Math.max(...gains) : null,
+        };
+      })
+    : [];
+
+  const tailoringBrief = {
+    decision: modelAnalysis.decision || "MAYBE",
+    confidence: modelAnalysis.confidence || "MEDIUM",
+    effort: modelAnalysis.effort || "MEDIUM",
+    ats: {
+      currentCoverage: ats.score,
+      sectionQuality: ats.sectionScore,
+    },
+    suggestedSummary: modelAnalysis.suggestedSummary || "",
+    rejectionReasons: Array.isArray(modelAnalysis.rejectionReasons) ? modelAnalysis.rejectionReasons.slice(0, 3) : [],
+    highRoiFixes,
+    strongSignals: Array.isArray(modelAnalysis.strongSignals) ? modelAnalysis.strongSignals.slice(0, 5) : [],
+    strongMatches: deterministicBrief.strongMatches,
+    weakMatches: deterministicBrief.weakMatches,
+    missingKeywords: deterministicBrief.missingKeywords,
+    deprioritized: deterministicBrief.deprioritized,
+  };
 
   const allKeywords = weightedKeywords.map(k => k.term);
-  analysis.keywords = allKeywords;
-  analysis.rubric = rubric;
-  analysis.rubricVersion = rubric.version;
-  analysis.atsKeywordTiers = tieredKeywords;
-  analysis.atsScore = ats.score;
-  analysis.atsCoverageScore = ats.coverageScore;
-  analysis.atsSectionScore = ats.sectionScore;
-  analysis.atsMatched = ats.matched;
-  analysis.atsMissing = ats.missing;
-  analysis.atsKeywordFrequency = ats.keywordFrequency;
-  analysis.atsMatchMethod = ats.matchMethod;
-  analysis.atsSectionHits = ats.sectionHits;
-
-  const topKeywords = ats.matched
-    .filter((kw) => ats.keywordFrequency[kw] > 0)
-    .sort((a, b) => ats.keywordFrequency[b] - ats.keywordFrequency[a])
-    .slice(0, 8)
-    .map((kw) => {
-      const freq = ats.keywordFrequency[kw];
-      const sects = (ats.sectionHits[kw] || []).join("+");
-      return `${kw} (${freq}x${sects ? ", " + sects : ""})`;
-    })
-    .join(", ");
-
-  const mc = ats._methodCounts;
-  const methodSummary = [
-    mc.exact && `${mc.exact} exact`,
-    mc.synonym && `${mc.synonym} synonym`,
-    mc.stem && `${mc.stem} stem`,
-    mc.ngram && `${mc.ngram} n-gram`,
-  ].filter(Boolean).join(", ");
-
-  const atsSection =
-    `\n\n## 📄 ATS Coverage: ${ats.score}%\n\n` +
-    `**Section Quality:** ${ats.sectionScore}%\n\n` +
-    (topKeywords ? `**Top Keywords:** ${topKeywords}\n\n` : "") +
-    `**Matched (${ats.matched.length}):** ${ats.matched.join(", ") || "None"}\n\n` +
-    `**Missing (${ats.missing.length}):** ${ats.missing.join(", ") || "None"}\n\n` +
-    (methodSummary ? `**Match Methods:** ${methodSummary}\n\n` : "") +
-    `---`;
-
-  analysis.markdown = (analysis.markdown || "").replace(/\n---/, `\n---${atsSection}`);
-  if (!analysis.markdown.includes("ATS Coverage:")) {
-    analysis.markdown += atsSection;
-  }
-
+  const analysis = {
+    ...modelAnalysis,
+    keywords: allKeywords,
+    rubric,
+    rubricVersion: rubric.version,
+    atsKeywordTiers: tieredKeywords,
+    atsScore: ats.score,
+    atsCoverageScore: ats.coverageScore,
+    atsSectionScore: ats.sectionScore,
+    atsMatched: ats.matched,
+    atsMissing: ats.missing,
+    atsKeywordFrequency: ats.keywordFrequency,
+    atsMatchMethod: ats.matchMethod,
+    atsSectionHits: ats.sectionHits,
+    tailoringBrief,
+  };
+  analysis.markdown = buildCompactAnalysisMarkdown(tailoringBrief);
   return analysis;
 }

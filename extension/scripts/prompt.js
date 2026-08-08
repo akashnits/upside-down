@@ -1,66 +1,9 @@
 // prompt.js — Cowork prompt template builder
 // Separated from main.js for easy prompt iteration
 
-/**
- * Build a structured ATS briefing from analysis data.
- * Gives the LLM actionable, prioritized keyword intelligence.
- */
-function buildATSBriefing(analysis) {
-    const lines = [];
-    lines.push(`Current ATS Coverage: ${analysis.atsScore || 0}% (target: 70%+)`);
-    if (typeof analysis.baselineScore === "number") {
-        const delta = typeof analysis.scoreDelta === "number" ? analysis.scoreDelta : analysis.atsScore - analysis.baselineScore;
-        lines.push(`Baseline ATS Coverage: ${analysis.baselineScore}% | Change: ${delta >= 0 ? "+" : ""}${delta}%`);
-    }
-    if (typeof analysis.atsSectionScore === "number") {
-        lines.push(`Section quality diagnostic: ${analysis.atsSectionScore}%`);
-    }
-
-    // Weak matches that should be strengthened to exact
-    const weakMatches = [];
-    const strongMatches = [];
-    if (analysis.atsMatchMethod) {
-        for (const [kw, method] of Object.entries(analysis.atsMatchMethod)) {
-            if (method === "stem" || method === "ngram") {
-                weakMatches.push(`${kw} (matched via ${method})`);
-            } else {
-                const freq = (analysis.atsKeywordFrequency || {})[kw] || 0;
-                const sects = ((analysis.atsSectionHits || {})[kw] || []).join("+");
-                strongMatches.push(`${kw} (${freq}x${sects ? " in " + sects : ""})`);
-            }
-        }
-    }
-
-    if (strongMatches.length) {
-        lines.push(`\nStrong matches (already well-placed, do NOT remove): ${strongMatches.join(", ")}`);
-    }
-    if (weakMatches.length) {
-        lines.push(`\nWeak matches (strengthen to exact keyword): ${weakMatches.join(", ")}`);
-    }
-
-    // Group missing keywords by priority tier if available
-    const missing = analysis.atsMissing || [];
-    const tieredKw = analysis.atsKeywordTiers;
-    if (missing.length && tieredKw) {
-        const missingSet = new Set(missing.map(k => k.toLowerCase()));
-        const missingRequired = (tieredKw.required || []).filter(k => missingSet.has(k.toLowerCase()));
-        const missingPreferred = (tieredKw.preferred || []).filter(k => missingSet.has(k.toLowerCase()));
-        const missingNice = (tieredKw.nice_to_have || []).filter(k => missingSet.has(k.toLowerCase()));
-
-        if (missingRequired.length) {
-            lines.push(`\n🔴 Missing REQUIRED keywords (${missingRequired.length}): ${missingRequired.join(", ")}`);
-        }
-        if (missingPreferred.length) {
-            lines.push(`\n🟡 Missing PREFERRED keywords (${missingPreferred.length}): ${missingPreferred.join(", ")}`);
-        }
-        if (missingNice.length) {
-            lines.push(`\n🟢 Missing NICE-TO-HAVE keywords (${missingNice.length}): ${missingNice.join(", ")}`);
-        }
-    } else if (missing.length) {
-        lines.push(`\nMissing keywords (${missing.length}): ${missing.join(", ")}`);
-    }
-
-    return lines.join("\n");
+function buildTailoringBrief(analysis) {
+    const brief = analysis.tailoringBrief || analysis.analysisBrief || {};
+    return JSON.stringify(brief, null, 2);
 }
 
 /**
@@ -71,7 +14,7 @@ function buildATSBriefing(analysis) {
  * @returns {string} The formatted Cowork prompt
  */
 function buildCoworkPrompt(jobData, analysis, resumeUrl) {
-    const atsBriefing = buildATSBriefing(analysis);
+    const tailoringBrief = buildTailoringBrief(analysis);
 
     return `You are an expert Executive Resume Writer.
 
@@ -86,13 +29,9 @@ Please help me tailor my resume for the ${jobData.role} position at ${jobData.co
 
 Here is the context:
 1. Resume Draft Link: ${resumeUrl || "[Attach Resume .docx]"}
-2. Job Analysis Data:
+2. Analysis Brief:
 """
-${analysis.markdown}
-"""
-3. ATS Keyword Intelligence:
-"""
-${atsBriefing}
+${tailoringBrief}
 """
 
 Task Requirements & Execution Rules:

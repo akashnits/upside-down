@@ -62,6 +62,11 @@ function doPost(e) {
       analysis.scoreDelta = typeof analysis.baselineScore === "number"
         ? analysis.currentScore - analysis.baselineScore
         : null;
+      if (analysis.tailoringBrief && analysis.tailoringBrief.ats) {
+        analysis.tailoringBrief.ats.baselineCoverage = analysis.baselineScore;
+        analysis.tailoringBrief.ats.currentCoverage = analysis.currentScore;
+        analysis.tailoringBrief.ats.delta = analysis.scoreDelta;
+      }
       Logger.log(`[INFO] Analysis complete. Decision: ${analysis.decision}`);
 
       // 4. Update persisted rubric and current score for existing entries
