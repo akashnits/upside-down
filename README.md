@@ -9,7 +9,7 @@ Built for the modern job seeker. **Upside Down** is a high-performance Chrome Ex
 
 ## 🚀 Key Features
 
-- 📊 **Deterministic ATS Engine** — Real-time scoring using **BM25**, stemming, section weighting, and a mini-taxonomy. No AI "guesses," just pure data.
+- 📊 **Deterministic ATS Engine** — Stable weighted keyword coverage with alias matching, stemming, section diagnostics, and a mini-taxonomy. No AI "guesses" in the score.
 - 🤖 **Multi-LLM Analysis** — Powered by Gemini and Mistral via OpenRouter. Extracts keywords and generates deep insights in a single pass.
 - 📓 **Notion Integration** — One-click export to your Job Tracking board. Automatically builds a rich Insight Card within your Notion database.
 - 📝 **Resume Tailoring (Cowork)** — Deep integration with the **Cowork** ecosystem for precision resume editing using `resume_builder.js` schemas.
@@ -63,7 +63,7 @@ Modern, non-blocking UI that slides into your job hunt.
 High-concurrency, modularized GAS environment managed via `clasp`.
 
 - **`analysis.js`**: LLM orchestration and keyword extraction.
-- **`atsEngine.js`**: The scoring brain (BM25, stemming, taxonomy).
+- **`atsEngine.js`**: The scoring brain (weighted coverage, alias matching, stemming, section diagnostics, and taxonomy).
 - **`notion.js`**: Seamless connection to Notion's Block API.
 - **`router.js`**: Central entry point for all endpoint requests.
 

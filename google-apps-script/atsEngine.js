@@ -1,6 +1,6 @@
-// atsEngine.js — ATS Score Engine (BM25, stemming, section weighting, synonym taxonomy)
+// atsEngine.js — ATS Score Engine (weighted coverage, section diagnostics, synonym taxonomy)
 // Functions: normalizeText, simpleStem, buildStemIndex, detectSections,
-//            countKeywordInSections, bm25TermScore, calculateATSScore
+//            countKeywordInSections, calculateATSScore
 
 // --- Protected tokens for normalization ---
 const PROTECTED_TOKENS = {
@@ -175,7 +175,9 @@ function countKeywordInSections(keyword, sectionMap) {
   let rawCount = 0;
   const hitSections = [];
   const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const regex = new RegExp("\\b" + escaped + "\\b", "gi");
+  const prefix = /^[a-z0-9]/i.test(keyword) ? "\\b" : "(^|[^a-z0-9])";
+  const suffix = /[a-z0-9]$/i.test(keyword) ? "\\b" : "(?![a-z0-9])";
+  const regex = new RegExp(prefix + escaped + suffix, "gi");
 
   for (const [sectionName, sectionText] of Object.entries(sectionMap)) {
     const normalizedSection = normalizeText(sectionText);
@@ -191,18 +193,9 @@ function countKeywordInSections(keyword, sectionMap) {
 }
 
 /**
- * BM25 term score: tf / (tf + k1 * (1 - b + b * dl/avgdl))
- * k1=1.2, b=0.75 (standard BM25 parameters)
- */
-function bm25TermScore(tf, docLength, avgDocLength) {
-  const k1 = 1.2;
-  const b = 0.75;
-  return tf / (tf + k1 * (1 - b + b * (docLength / avgDocLength)));
-}
-
-/**
- * Calculate ATS score by matching keywords against resume.
- * Uses BM25-inspired scoring, stemming, synonym taxonomy, section weighting, and n-gram decomposition.
+ * Calculate ATS score by matching a fixed rubric against a resume.
+ * The headline score is weighted coverage. Match method and section placement
+ * are returned separately so resume length cannot hide coverage gains.
  * @param {Array} keywords - Array of {term, weight} objects or plain strings (backward compat)
  * @param {string} resumeText - The resume text to match against
  */
@@ -233,29 +226,29 @@ function calculateATSScore(keywords, resumeText) {
 
   // --- Normalize resume and build indices ---
   const normalizedResume = normalizeText(resumeText);
-  const resumeTokens = normalizedResume.split(/\s+/);
-  const docLength = resumeTokens.length;
-  const avgDocLength = 500; // Typical resume word count
   const stemIndex = buildStemIndex(normalizedResume);
 
   // --- Detect sections and build section map ---
   const sectionMap = detectSections(resumeText);
 
-  // --- Match type multipliers (exact > synonym > stem > ngram) ---
-  const MATCH_MULTIPLIER = { exact: 1.0, synonym: 0.9, stem: 0.8, ngram: 0.7 };
-
   // --- Helper: word-boundary regex test on normalized text ---
   function wordBoundaryMatch(term, text) {
     const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return new RegExp("\\b" + escaped + "\\b", "i").test(text);
+    const prefix = /^[a-z0-9]/i.test(term) ? "\\b" : "(^|[^a-z0-9])";
+    const suffix = /[a-z0-9]$/i.test(term) ? "\\b" : "(?![a-z0-9])";
+    return new RegExp(prefix + escaped + suffix, "i").test(text);
   }
 
-  // --- Per-keyword BM25 scores ---
-  let bm25Sum = 0;
-  let bm25Max = 0; // Theoretical max if every keyword scored perfectly (sum of weights)
   const methodCounts = { exact: 0, synonym: 0, stem: 0, ngram: 0 };
+  const coverageMultiplier = { exact: 1.0, synonym: 1.0, stem: 0.5, ngram: 0.5 };
+  let totalWeight = 0;
+  let matchedWeight = 0;
+  let sectionQualitySum = 0;
 
-  weightedKeywords.forEach(({ term: keyword, weight }) => {
+  weightedKeywords.forEach(({ term: keyword, weight, aliases = [] }) => {
+    if (!keyword || !Number.isFinite(Number(weight)) || Number(weight) <= 0) return;
+
+    weight = Number(weight);
     const kwLower = keyword.toLowerCase();
     const kwNormalized = normalizeText(kwLower);
 
@@ -267,8 +260,12 @@ function calculateATSScore(keywords, resumeText) {
       return; // Don't count as matched OR missing
     }
 
-    // Theoretical max: every keyword gets perfect BM25 + exact multiplier, scaled by weight
-    bm25Max += weight;
+    totalWeight += weight;
+
+    const rubricAliases = aliases
+      .filter(alias => typeof alias === "string" && alias.trim())
+      .map(alias => normalizeText(alias.toLowerCase()))
+      .filter(alias => alias !== kwNormalized);
 
     let method = null;
     let tf = 0;
@@ -286,12 +283,14 @@ function calculateATSScore(keywords, resumeText) {
 
     // 2. Synonym/taxonomy match
     if (!method) {
+      let synTerms = rubricAliases;
       const synGroup = SYNONYM_TAXONOMY[kwNormalized] || SYNONYM_TAXONOMY[kwLower];
-      let synTerms = synGroup ? synGroup : [];
+      if (synGroup) synTerms = synTerms.concat(synGroup.map(syn => normalizeText(syn)));
       // Also check if keyword is a member of any group
       if (!synTerms.length && termToGroup[kwNormalized]) {
-        synTerms = SYNONYM_TAXONOMY[termToGroup[kwNormalized]] || [];
+        synTerms = (SYNONYM_TAXONOMY[termToGroup[kwNormalized]] || []).map(syn => normalizeText(syn));
       }
+      synTerms = [...new Set(synTerms)];
       for (const syn of synTerms) {
         const synNorm = normalizeText(syn);
         if (wordBoundaryMatch(synNorm, normalizedResume)) {
@@ -341,34 +340,36 @@ function calculateATSScore(keywords, resumeText) {
       methodCounts[method]++;
       keywordFrequency[keyword] = Math.round(tf);
       sectionHits[keyword] = hitSects;
+      matchedWeight += weight * coverageMultiplier[method];
+
+      const bestSectionWeight = hitSects.reduce((best, section) => {
+        return Math.max(best, SECTION_WEIGHTS[section] || 0.7);
+      }, 0);
+      sectionQualitySum += weight * coverageMultiplier[method] * Math.min(bestSectionWeight / 1.5, 1);
 
       // Claim synonym group
       if (groupName) claimedGroups.add(groupName);
-
-      // BM25 contribution with match-type multiplier and priority weight
-      const bm25Raw = bm25TermScore(tf, docLength, avgDocLength);
-      bm25Sum += bm25Raw * MATCH_MULTIPLIER[method] * weight;
     } else {
       missing.push(keyword);
     }
   });
 
   // --- Scores ---
-  const totalConsidered = matched.length + missing.length;
-  const score = totalConsidered > 0
-    ? Math.round((matched.length / totalConsidered) * 100)
+  const score = totalWeight > 0
+    ? Math.round((matchedWeight / totalWeight) * 100)
     : 0;
-  const bm25Score = bm25Max > 0
-    ? Math.round((bm25Sum / bm25Max) * 100)
+  const sectionScore = matchedWeight > 0
+    ? Math.round((sectionQualitySum / matchedWeight) * 100)
     : 0;
 
-  Logger.log(`[ATS] Binary: ${score}%, BM25: ${bm25Score}%, Methods: ${JSON.stringify(methodCounts)}`);
+  Logger.log(`[ATS] Coverage: ${score}%, Section quality: ${sectionScore}%, Methods: ${JSON.stringify(methodCounts)}`);
   Logger.log(`[ATS] Frequencies: ${JSON.stringify(keywordFrequency)}`);
   Logger.log(`[ATS] Section hits: ${JSON.stringify(sectionHits)}`);
 
   return {
     score,
-    bm25Score,
+    coverageScore: score,
+    sectionScore,
     matched,
     missing,
     keywordFrequency,

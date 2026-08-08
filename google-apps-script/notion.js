@@ -1,9 +1,59 @@
 // notion.js — Notion Database CRUD operations
 // Functions: findNotionEntry, updateNotionPage, saveToNotion, initNotionDatabase
 
+const NOTION_RICH_TEXT_CHUNK_SIZE = 1900;
+
+function getNotionRichTextValue(property) {
+  if (!property || !Array.isArray(property.rich_text)) return "";
+  return property.rich_text
+    .map(item => item.plain_text || (item.text && item.text.content) || "")
+    .join("");
+}
+
+function getNotionNumberValue(property) {
+  return property && typeof property.number === "number" ? property.number : null;
+}
+
+function parseStoredRubric(value) {
+  if (!value) return null;
+  try {
+    const rubric = JSON.parse(value);
+    return rubric && rubric.version && rubric.keywords ? rubric : null;
+  } catch (err) {
+    Logger.log(`[WARN] Could not parse stored ATS rubric: ${err.toString()}`);
+    return null;
+  }
+}
+
+function buildNotionRichTextProperty(value) {
+  if (!value) return { rich_text: [] };
+  const chunks = [];
+  for (let i = 0; i < value.length; i += NOTION_RICH_TEXT_CHUNK_SIZE) {
+    chunks.push({ text: { content: value.substring(i, i + NOTION_RICH_TEXT_CHUNK_SIZE) } });
+  }
+  return { rich_text: chunks };
+}
+
+function buildRubricProperties(analysis) {
+  const properties = {};
+  if (analysis.rubric) {
+    properties["ATS Rubric"] = buildNotionRichTextProperty(JSON.stringify(analysis.rubric));
+    properties["Rubric Version"] = buildNotionRichTextProperty(String(analysis.rubricVersion || analysis.rubric.version || "1"));
+    properties["JD Hash"] = buildNotionRichTextProperty(String(analysis.rubric.jdHash || ""));
+  }
+  if (typeof analysis.baselineScore === "number") {
+    properties["Baseline ATS Score"] = { number: analysis.baselineScore / 100 };
+  }
+  if (typeof analysis.atsScore === "number") {
+    properties["Current ATS Score"] = { number: analysis.atsScore / 100 };
+    properties["ATS Score"] = { number: analysis.atsScore / 100 };
+  }
+  return properties;
+}
+
 /**
  * Query Notion DB for an existing entry by Job ID.
- * Returns { pageId, resumeUrl } or null if not found.
+ * Returns the resume URL and any persisted ATS comparison state.
  */
 function findNotionEntry(jobId) {
   const token = PROPERTIES.getProperty("NOTION_API_KEY");
@@ -35,10 +85,17 @@ function findNotionEntry(jobId) {
   if (data.results && data.results.length > 0) {
     const page = data.results[0];
     const resumeLink = page.properties["Resume Link"];
+    const baselineValue = getNotionNumberValue(page.properties["Baseline ATS Score"]);
+    const currentValue = getNotionNumberValue(page.properties["Current ATS Score"]);
     Logger.log(`[INFO] Found existing Notion entry for Job ID: ${jobId}`);
     return {
       pageId: page.id,
-      resumeUrl: (resumeLink && resumeLink.url) || null
+      resumeUrl: (resumeLink && resumeLink.url) || null,
+      rubric: parseStoredRubric(getNotionRichTextValue(page.properties["ATS Rubric"])),
+      rubricVersion: getNotionRichTextValue(page.properties["Rubric Version"]) || null,
+      jdHash: getNotionRichTextValue(page.properties["JD Hash"]) || null,
+      baselineScore: baselineValue === null ? null : baselineValue * 100,
+      currentScore: currentValue === null ? null : currentValue * 100,
     };
   }
   
@@ -49,7 +106,7 @@ function findNotionEntry(jobId) {
 /**
  * Update an existing Notion page with latest analysis data.
  */
-function updateNotionPage(pageId, data) {
+function updateNotionPage(pageId, data, isRetry = false) {
   const token = PROPERTIES.getProperty("NOTION_API_KEY");
   if (!token) throw new Error("NOTION_API_KEY not set");
 
@@ -63,6 +120,8 @@ function updateNotionPage(pageId, data) {
       "Date": { date: { start: new Date().toISOString().split('T')[0] } }
     }
   };
+
+  Object.assign(payload.properties, buildRubricProperties(analysis));
 
   // Only update URL links if valid URLs were passed (prevents wiping them on early re-analysis)
   if (data.gistUrl) {
@@ -88,6 +147,11 @@ function updateNotionPage(pageId, data) {
   const response = UrlFetchApp.fetch(`https://api.notion.com/v1/pages/${pageId}`, options);
   const responseCode = response.getResponseCode();
   if (responseCode !== 200) {
+    if (!isRetry) {
+      Logger.log(`[INFO] Notion update may require the ATS rubric schema. Initializing and retrying.`);
+      initNotionDatabase(PROPERTIES.getProperty("NOTION_DB_ID"), token);
+      return updateNotionPage(pageId, data, true);
+    }
     throw new Error(`Notion Update Error (${responseCode}): ${response.getContentText()}`);
   }
 }
@@ -120,6 +184,8 @@ function saveToNotion(data, isRetry = false) {
       "Date": { date: { start: new Date().toISOString().split('T')[0] } }
     }
   };
+
+  Object.assign(payload.properties, buildRubricProperties(analysis));
 
   const options = {
     method: "post",
@@ -160,6 +226,11 @@ function initNotionDatabase(dbId, token) {
       "Decision": { "select": { "options": [{ "name": "APPLY", "color": "green" }, { "name": "MAYBE", "color": "yellow" }, { "name": "SKIP", "color": "red" }] } },
       "Confidence": { "select": { "options": [{ "name": "HIGH", "color": "green" }, { "name": "MEDIUM", "color": "yellow" }, { "name": "LOW", "color": "red" }] } },
       "ATS Score": { "number": { "format": "percent" } },
+      "Current ATS Score": { "number": { "format": "percent" } },
+      "Baseline ATS Score": { "number": { "format": "percent" } },
+      "ATS Rubric": { "rich_text": {} },
+      "Rubric Version": { "rich_text": {} },
+      "JD Hash": { "rich_text": {} },
       "Job Link": { "url": {} },
       "Job ID": { "rich_text": {} },
       "Gist Link": { "url": {} },

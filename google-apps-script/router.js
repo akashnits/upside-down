@@ -13,6 +13,7 @@ function doPost(e) {
     // --- ACTION: ANALYZE ---
     if (action === "analyze") {
       const jobDescription = data.jobDescription;
+      const currentJdHash = computeJobDescriptionHash(jobDescription);
 
       // 1. Try to fetch tailored resume from Notion, fall back to base resume
       let resumeText = "";
@@ -38,15 +39,36 @@ function doPost(e) {
       }
       Logger.log(`[INFO] Resume source: ${resumeSource}. Length: ${resumeText.length} chars`);
 
-      // 2. Analyze
-      const analysis = analyzeJob(jobDescription, resumeText);
+      // 2. Reuse the persisted rubric. Only legacy entries without a rubric generate one.
+      let rubric = existingEntry && existingEntry.rubric;
+      if (rubric) {
+        if (rubric.jdHash && rubric.jdHash !== currentJdHash) {
+          Logger.log(`[WARN] JD hash changed for Job ID ${data.jobId}; reusing stored rubric ${rubric.jdHash}`);
+        } else {
+          Logger.log(`[INFO] Reusing stored ATS rubric for Job ID: ${data.jobId}`);
+        }
+      } else {
+        Logger.log(`[INFO] Generating ATS rubric from the job description`);
+        rubric = extractJobRubric(jobDescription);
+      }
+
+      // 3. Analyze against the fixed rubric
+      const analysis = analyzeJob(jobDescription, resumeText, rubric);
+      analysis.currentJdHash = currentJdHash;
+      analysis.currentScore = analysis.atsScore;
+      analysis.baselineScore = existingEntry && typeof existingEntry.baselineScore === "number"
+        ? existingEntry.baselineScore
+        : (!existingEntry ? analysis.atsScore : null);
+      analysis.scoreDelta = typeof analysis.baselineScore === "number"
+        ? analysis.currentScore - analysis.baselineScore
+        : null;
       Logger.log(`[INFO] Analysis complete. Decision: ${analysis.decision}`);
 
-      // 3. Update ATS Score in Notion (if entry exists)
+      // 4. Update persisted rubric and current score for existing entries
       if (existingEntry) {
         try {
           updateNotionPage(existingEntry.pageId, { analysis: analysis });
-          Logger.log(`[INFO] Updated ATS Score in Notion for Job ID: ${data.jobId}`);
+          Logger.log(`[INFO] Updated ATS coverage in Notion for Job ID: ${data.jobId}`);
         } catch (err) {
           Logger.log(`[WARN] Could not update ATS in Notion: ${err.toString()}`);
         }
@@ -163,4 +185,3 @@ function doPost(e) {
 
 // --- Integration functions moved to integrations.js ---
 // createGist, logToSheet
-

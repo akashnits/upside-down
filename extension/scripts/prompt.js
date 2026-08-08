@@ -7,7 +7,14 @@
  */
 function buildATSBriefing(analysis) {
     const lines = [];
-    lines.push(`Current ATS Score: ${analysis.atsScore || 0}% (target: 70%+)`);
+    lines.push(`Current ATS Coverage: ${analysis.atsScore || 0}% (target: 70%+)`);
+    if (typeof analysis.baselineScore === "number") {
+        const delta = typeof analysis.scoreDelta === "number" ? analysis.scoreDelta : analysis.atsScore - analysis.baselineScore;
+        lines.push(`Baseline ATS Coverage: ${analysis.baselineScore}% | Change: ${delta >= 0 ? "+" : ""}${delta}%`);
+    }
+    if (typeof analysis.atsSectionScore === "number") {
+        lines.push(`Section quality diagnostic: ${analysis.atsSectionScore}%`);
+    }
 
     // Weak matches that should be strengthened to exact
     const weakMatches = [];

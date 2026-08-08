@@ -95,11 +95,20 @@ function createPanel() {
             const emoji = analysis.decision === 'APPLY' ? '✅' : analysis.decision === 'SKIP' ? '⛔' : '⚠️';
             const color = analysis.decision === 'APPLY' ? '#155724' : analysis.decision === 'SKIP' ? '#721c24' : '#856404';
             const bg = analysis.decision === 'APPLY' ? '#d4edda' : analysis.decision === 'SKIP' ? '#f8d7da' : '#fff3cd';
+            const currentScore = typeof analysis.currentScore === 'number' ? analysis.currentScore : analysis.atsScore;
+            const scoreText = typeof currentScore === 'number' ? `${currentScore}%` : '?';
+            const comparisonText = typeof analysis.baselineScore === 'number'
+                ? `Baseline: ${analysis.baselineScore}% | Change: ${analysis.scoreDelta >= 0 ? '+' : ''}${analysis.scoreDelta}%`
+                : 'Baseline will be saved with this job';
+            const sectionText = typeof analysis.atsSectionScore === 'number'
+                ? ` | Section quality: ${analysis.atsSectionScore}%`
+                : '';
 
             result.innerHTML = `
                 <div style="text-align:center; background:${bg}; color:${color}; padding:14px; border-radius:12px; margin-bottom:16px; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
                     <div style="font-size:28px; font-weight:bold;">${emoji} ${analysis.decision}</div>
-                    <div style="margin-top:6px; font-size:13px;">Confidence: ${analysis.confidence} | Effort: ${analysis.effort} | ATS: ${analysis.atsScore || '?'}%</div>
+                    <div style="margin-top:6px; font-size:13px;">Confidence: ${analysis.confidence} | Effort: ${analysis.effort} | ATS coverage: ${scoreText}${sectionText}</div>
+                    <div style="margin-top:4px; font-size:12px;">${comparisonText}</div>
                 </div>
                 <div style="background:#fff; padding:16px; border-radius:12px; font-size:13px; max-height:calc(100vh - 260px); overflow-y:auto; margin-bottom:16px; line-height:1.6; border:1px solid #e5e7eb;">
                     ${formatMarkdown(analysis.markdown.substring(0, 5000))}

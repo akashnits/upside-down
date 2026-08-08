@@ -20,11 +20,132 @@ function getProviderConfig() {
 
 
 
+function callJsonModel(provider, apiKey, prompt, temperature, maxTokens) {
+  const payload = {
+    model: provider.MODELS.ANALYSIS,
+    messages: [
+      {
+        role: "system",
+        content: "Always respond with valid JSON only, with no markdown code fences.",
+      },
+      { role: "user", content: prompt },
+    ],
+    temperature,
+    max_tokens: maxTokens,
+    response_format: { type: "json_object" },
+  };
+
+  const options = {
+    method: "post",
+    contentType: "application/json",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "HTTP-Referer": "https://github.com/akashnits/upside-down",
+      "X-Title": "Upside Down Extension",
+    },
+    payload: JSON.stringify(payload),
+  };
+
+  let response = UrlFetchApp.fetch(provider.API_URL, options);
+  let data = JSON.parse(response.getContentText());
+  let finishReason = data.choices[0].finish_reason;
+
+  if (finishReason === "length") {
+    Logger.log("[WARN] LLM response was truncated. Retrying with higher max_tokens...");
+    payload.max_tokens = Math.max(maxTokens * 2, 16384);
+    options.payload = JSON.stringify(payload);
+    response = UrlFetchApp.fetch(provider.API_URL, options);
+    data = JSON.parse(response.getContentText());
+    finishReason = data.choices[0].finish_reason;
+  }
+
+  if (finishReason === "length") {
+    throw new Error("LLM response was truncated after retry");
+  }
+
+  const content = data.choices && data.choices[0] && data.choices[0].message
+    ? data.choices[0].message.content
+    : "";
+  if (!content) throw new Error("LLM returned an empty response");
+
+  try {
+    return JSON.parse(content.replace(/```json\n?/gi, "").replace(/```\n?/g, "").trim());
+  } catch (err) {
+    Logger.log(`[ERROR] Failed to parse LLM JSON: ${content.substring(0, 500)}`);
+    throw new Error("Failed to parse AI response as JSON");
+  }
+}
+
+function computeJobDescriptionHash(jdText) {
+  const normalized = (jdText || "").toLowerCase().replace(/\s+/g, " ").trim();
+  const digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.MD5,
+    normalized,
+    Utilities.Charset.UTF_8,
+  );
+  return digest.map(byte => {
+    const value = byte < 0 ? byte + 256 : byte;
+    return (value < 16 ? "0" : "") + value.toString(16);
+  }).join("");
+}
+
+function normalizeRubric(rawRubric, jdHash) {
+  const source = rawRubric.rubric || rawRubric;
+  const tiers = [
+    { name: "required", weight: 1.0 },
+    { name: "preferred", weight: 0.6 },
+    { name: "nice_to_have", weight: 0.3 },
+  ];
+  const seen = new Set();
+  const keywords = {};
+
+  tiers.forEach(({ name, weight }) => {
+    const entries = Array.isArray(source[name]) ? source[name] : [];
+    keywords[name] = [];
+
+    entries.forEach(entry => {
+      const value = typeof entry === "string" ? { term: entry } : entry || {};
+      const term = typeof value.term === "string" ? value.term.trim() : "";
+      if (!term) return;
+
+      const key = normalizeText(term);
+      if (seen.has(key)) return;
+      seen.add(key);
+
+      const aliases = Array.isArray(value.aliases)
+        ? [...new Set(value.aliases.filter(alias => typeof alias === "string" && alias.trim()).map(alias => alias.trim()))]
+        : [];
+      keywords[name].push({ term, aliases, weight });
+    });
+  });
+
+  return {
+    version: "1",
+    jdHash,
+    keywords,
+  };
+}
+
+function rubricToWeightedKeywords(rubric) {
+  return [
+    ...(rubric.keywords.required || []),
+    ...(rubric.keywords.preferred || []),
+    ...(rubric.keywords.nice_to_have || []),
+  ];
+}
+
+function rubricToDisplayTiers(rubric) {
+  return {
+    required: (rubric.keywords.required || []).map(item => item.term),
+    preferred: (rubric.keywords.preferred || []).map(item => item.term),
+    nice_to_have: (rubric.keywords.nice_to_have || []).map(item => item.term),
+  };
+}
+
 /**
- * Analyze Job vs Resume in a single LLM call
- * Extracts keywords AND provides analysis in one prompt
+ * Extract a stable ATS rubric from the job description only.
  */
-function analyzeJob(jdText, resumeText) {
+function extractJobRubric(jdText) {
   const provider = getProviderConfig();
   const scriptProperties = PropertiesService.getScriptProperties();
   const apiKey = scriptProperties.getProperty(provider.API_KEY_PROP);
@@ -32,7 +153,42 @@ function analyzeJob(jdText, resumeText) {
   if (!apiKey)
     throw new Error(`${provider.API_KEY_PROP} not found in Script Properties`);
 
-  // Single LLM call: extract keywords + analyze in one prompt
+  const rubricPrompt = `You are an ATS keyword analyst.
+
+JOB DESCRIPTION:
+${jdText}
+
+Extract a stable, conservative rubric from the job description. Do not use any resume context.
+- required: explicitly required, must-have, or central responsibility skills and qualifications.
+- preferred: explicitly preferred, bonus, plus, or nice-to-have skills.
+- nice_to_have: implied role-specific skills only when strongly supported by the description.
+- Keep terms canonical and concise. Do not include generic soft skills or broad job duties.
+- Add common resume spellings or abbreviations as aliases only when they are genuine equivalents.
+
+Output strict JSON:
+{
+  "required": [{"term": "Python", "aliases": ["Python 3"]}],
+  "preferred": [{"term": "Terraform", "aliases": []}],
+  "nice_to_have": [{"term": "GraphQL", "aliases": ["GQL"]}]
+}`;
+
+  const rawRubric = callJsonModel(provider, apiKey, rubricPrompt, 0, 4096);
+  return normalizeRubric(rawRubric, computeJobDescriptionHash(jdText));
+}
+
+/**
+ * Analyze a job against a resume using a previously generated rubric.
+ */
+function analyzeJob(jdText, resumeText, rubric) {
+  const provider = getProviderConfig();
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const apiKey = scriptProperties.getProperty(provider.API_KEY_PROP);
+
+  if (!apiKey)
+    throw new Error(`${provider.API_KEY_PROP} not found in Script Properties`);
+
+  const weightedKeywords = rubricToWeightedKeywords(rubric);
+  const tieredKeywords = rubricToDisplayTiers(rubric);
   const insightPrompt = `You are an expert Career Coach and Recruiter.
 
 JOB DESCRIPTION:
@@ -41,21 +197,14 @@ ${jdText}
 RESUME:
 ${resumeText}
 
-Task: Analyze this job application.
-Step 1: Extract all required skills, technologies, and qualifications as priority-tiered keywords.
-  - "required": Skills/technologies explicitly listed as required, must-have, or core responsibilities.
-  - "preferred": Skills listed as preferred, nice-to-have, or mentioned in bonus/plus sections.
-  - "nice_to_have": Skills implied by the role context but not explicitly stated (e.g., "REST APIs" implied by "backend development").
-Step 2: Use those keywords to evaluate resume fit.
-Step 3: Provide actionable insights.
+FIXED ATS RUBRIC:
+${JSON.stringify(rubric)}
+
+Use the fixed rubric above. Do not extract, add, remove, or reclassify keywords.
+Analyze the job application and provide actionable insights.
 
 Output strict JSON in this format:
 {
-  "keywords": {
-    "required": ["Python", "AWS", ...],
-    "preferred": ["Terraform", ...],
-    "nice_to_have": ["GraphQL", ...]
-  },
   "markdown": "# Company — Role ... (The full Insight Card markdown)",
   "decision": "APPLY" | "MAYBE" | "SKIP",
   "confidence": "HIGH" | "MEDIUM" | "LOW",
@@ -99,115 +248,35 @@ The Markdown Insight Card MUST follow this structure EXACTLY (DO NOT include Dec
 
 - **Company:** [Company Name]
 - **Role:** [Role Name]
-- **Analyzed On:** ${new Date().toLocaleDateString('en-CA')}`; // en-CA gives YYYY-MM-DD format based on local timezone
+- **Analyzed On:** ${new Date().toLocaleDateString('en-CA')}`;
 
-  const payload = {
-    model: provider.MODELS.ANALYSIS,
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are a career coach. Always respond with valid JSON only, no markdown code blocks.",
-      },
-      { role: "user", content: insightPrompt },
-    ],
-    temperature: CONFIG.TEMPERATURE.ANALYSIS,
-    max_tokens: 8192,
-    response_format: { type: "json_object" },
-  };
-
-  const options = {
-    method: "post",
-    contentType: "application/json",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": "https://github.com/akashnits/upside-down",
-      "X-Title": "Upside Down Extension",
-    },
-    payload: JSON.stringify(payload),
-  };
-
-  const response = UrlFetchApp.fetch(provider.API_URL, options);
-  const data = JSON.parse(response.getContentText());
-  
-  // Check finish_reason — if 'length', the response was truncated
-  const finishReason = data.choices[0].finish_reason;
-  Logger.log(`[INFO] LLM finish_reason: ${finishReason}`);
-  
-  if (finishReason === 'length') {
-    Logger.log(`[WARN] LLM response was truncated (finish_reason=length). Retrying with higher max_tokens...`);
-    payload.max_tokens = 16384;
-    options.payload = JSON.stringify(payload);
-    const retryResponse = UrlFetchApp.fetch(provider.API_URL, options);
-    const retryData = JSON.parse(retryResponse.getContentText());
-    const retryFinish = retryData.choices[0].finish_reason;
-    Logger.log(`[INFO] Retry finish_reason: ${retryFinish}`);
-    if (retryFinish === 'length') {
-      throw new Error('LLM response still truncated after retry. The job description may be too long.');
-    }
-    var jsonString = retryData.choices[0].message.content;
-  } else {
-    var jsonString = data.choices[0].message.content;
-  }
-
-  // Clean markdown code blocks if present
-  jsonString = jsonString
-    .replace(/```json\n?/gi, "")
-    .replace(/```\n?/g, "")
-    .trim();
-
-  let analysis;
-  try {
-    analysis = JSON.parse(jsonString);
-  } catch (e) {
-    Logger.log(
-      `[ERROR] Failed to parse analysis JSON (finish_reason=${finishReason}): ${jsonString.substring(0, 500)}`,
-    );
-    throw new Error("Failed to parse AI response as JSON");
-  }
-
-  // Extract tiered keywords from LLM response, convert to weighted array
-  const tieredKeywords = analysis.keywords || {};
-  const required = tieredKeywords.required || [];
-  const preferred = tieredKeywords.preferred || [];
-  const niceToHave = tieredKeywords.nice_to_have || [];
-
-  // Backward compat: if keywords is a flat array (old format), treat all as required
-  const weightedKeywords = Array.isArray(analysis.keywords)
-    ? analysis.keywords.map(k => ({ term: k, weight: 1.0 }))
-    : [
-        ...required.map(k => ({ term: k, weight: 1.0 })),
-        ...preferred.map(k => ({ term: k, weight: 0.6 })),
-        ...niceToHave.map(k => ({ term: k, weight: 0.3 })),
-      ];
-
-  // Flat keyword list for display
-  const allKeywords = weightedKeywords.map(k => k.term);
-
-  Logger.log(`[ATS] Keywords — required: ${required.length}, preferred: ${preferred.length}, nice_to_have: ${niceToHave.length}`);
+  const analysis = callJsonModel(
+    provider,
+    apiKey,
+    insightPrompt,
+    CONFIG.TEMPERATURE.ANALYSIS,
+    8192,
+  );
 
   const ats = calculateATSScore(weightedKeywords, resumeText);
   Logger.log(
-    `[ATS] Score: ${ats.score}% (${ats.matched.length}/${allKeywords.length} keywords)`,
+    `[ATS] Coverage: ${ats.score}% (${ats.matched.length}/${weightedKeywords.length} rubric terms)`,
   );
 
-  // Normalize keywords to flat array for downstream consumers (extension display)
+  const allKeywords = weightedKeywords.map(k => k.term);
   analysis.keywords = allKeywords;
-
-  // Pass tier data for priority-grouped display in extension prompt
-  if (!Array.isArray(tieredKeywords)) {
-    analysis.atsKeywordTiers = { required, preferred, nice_to_have: niceToHave };
-  }
-
-  // Add ATS data to response — use BM25 as the single ATS score
-  analysis.atsScore = ats.bm25Score;
+  analysis.rubric = rubric;
+  analysis.rubricVersion = rubric.version;
+  analysis.atsKeywordTiers = tieredKeywords;
+  analysis.atsScore = ats.score;
+  analysis.atsCoverageScore = ats.coverageScore;
+  analysis.atsSectionScore = ats.sectionScore;
   analysis.atsMatched = ats.matched;
   analysis.atsMissing = ats.missing;
   analysis.atsKeywordFrequency = ats.keywordFrequency;
   analysis.atsMatchMethod = ats.matchMethod;
   analysis.atsSectionHits = ats.sectionHits;
 
-  // Build top keywords line: "Python (6x, Skills+Experience), AWS (3x, Skills)"
   const topKeywords = ats.matched
     .filter((kw) => ats.keywordFrequency[kw] > 0)
     .sort((a, b) => ats.keywordFrequency[b] - ats.keywordFrequency[a])
@@ -227,17 +296,19 @@ The Markdown Insight Card MUST follow this structure EXACTLY (DO NOT include Dec
     mc.ngram && `${mc.ngram} n-gram`,
   ].filter(Boolean).join(", ");
 
-  // Inject ATS section into markdown (after first ---) so insight card has keyword details
   const atsSection =
-    `\n\n## 📄 ATS Score: ${ats.bm25Score}%\n\n` +
+    `\n\n## 📄 ATS Coverage: ${ats.score}%\n\n` +
+    `**Section Quality:** ${ats.sectionScore}%\n\n` +
     (topKeywords ? `**Top Keywords:** ${topKeywords}\n\n` : "") +
     `**Matched (${ats.matched.length}):** ${ats.matched.join(", ") || "None"}\n\n` +
     `**Missing (${ats.missing.length}):** ${ats.missing.join(", ") || "None"}\n\n` +
     (methodSummary ? `**Match Methods:** ${methodSummary}\n\n` : "") +
     `---`;
 
-  // Replace the first --- with ATS section + ---
-  analysis.markdown = analysis.markdown.replace(/\n---/, `\n---${atsSection}`);
+  analysis.markdown = (analysis.markdown || "").replace(/\n---/, `\n---${atsSection}`);
+  if (!analysis.markdown.includes("ATS Coverage:")) {
+    analysis.markdown += atsSection;
+  }
 
   return analysis;
 }
