@@ -35,20 +35,41 @@ ${tailoringBrief}
 """
 
 Task Requirements & Execution Rules:
-1. TARGETED EDITS ONLY: Only modify two sections of the document:
-   - Professional Summary / Objective: Rewrite to naturally incorporate the TOP MISSING KEYWORDS. Prioritize the missing keywords that appear most critical in the job description. Also address the "Rejection Reasons" from the analysis.
-   - Skills / Technologies: Add missing hard skills. Place them prominently — the Skills section carries the highest ATS weight.
+1. SOURCE OF TRUTH
+   Treat the Analysis Brief JSON as authoritative. Use its priority, expected gain,
+   missingKeywords, weakMatches, strongMatches, highRoiFixes, and suggestedSummary fields.
 
-2. STRENGTHEN WEAK MATCHES: Keywords that matched via stem or n-gram (listed under "Weak matches" above) are fragile. Find where they appear in my resume and replace with the EXACT keyword from the job description. For example, if "Optimized" matched "Optimizing" via stem, change it to the exact JD wording.
+2. APPLY HIGH-ROI ACTIONS FIRST
+   Work through highRoiFixes in priority order.
+   Prioritize required keywords, then weak required matches, then preferred keywords.
+   Deprioritize nice-to-have keywords unless higher-priority actions are complete.
 
-3. DO NOT TOUCH STRONG MATCHES: Keywords listed as "Strong matches" are already well-placed. Do not move, remove, or rephrase them.
+3. TARGETED EDITS ONLY
+   Only modify these two sections:
+   - Professional Summary / Objective:
+     Rewrite concisely and naturally using the highest-priority supported keywords.
+   - Skills / Technologies:
+     Add supported missing hard skills using the exact canonical terms from the Analysis Brief.
 
-4. MISSING KEYWORDS & EXPERIENCE:
-   - Do NOT fabricate or hallucinate work experience to force a missing keyword.
-   - For any missing technologies or hard skills that are NOT in my background: ASK ME if I have experience with them and take my input to decide whether to include them.
+4. EXACT KEYWORD MATCHING
+   For each selected supported missing or weak keyword, use the exact canonical term
+   or approved alias at least once in Summary or Skills.
+   Do not repeat keywords unnaturally or add terms that are already exact matches.
 
-5. FORMAT PRESERVATION: Read the resume content from the provided link, then
-   produce the output by populating data_<company>.js and running it through
-   resume_builder.js. Do not alter any section other than Summary and Skills.
-   At the end, visually verify in Google Docs-friendly format`;
+5. STRONG MATCHES
+   Preserve all strongMatches. Do not remove, weaken, or replace their terminology.
+
+6. UNKNOWN EXPERIENCE
+   If a keyword is marked needs_confirmation, ask for confirmation before adding it.
+   Never add unsupported technologies, responsibilities, or qualifications.
+
+7. FORMAT PRESERVATION
+   Read the resume content from the provided link, then produce the output by populating
+   data_<company>.js and running it through resume_builder.js. Preserve fonts, spacing,
+   date alignment, styling, and document structure.
+
+8. FINAL VALIDATION
+   Verify that selected high-ROI actions were applied or explicitly skipped, exact selected
+   keywords appear in Summary or Skills, no unsupported claims or unnecessary repetition were
+   introduced, and the generated resume was visually checked in Google Docs-friendly format`;
 }
