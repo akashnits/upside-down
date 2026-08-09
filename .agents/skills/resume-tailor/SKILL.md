@@ -32,9 +32,18 @@ Use this skill only when the user provides an Upside Down task reference with
 3. Read the returned task and draft URL. The task's `analysisBrief` is the source
    of truth for keyword priority, strong matches, and user selections.
 
-4. Read `resume_builder.js` from Downloads, copy it into the working directory if
-   needed, and create `data_<company>.js` that calls `buildResume()`. Preserve the
-   existing resume's fonts, spacing, date alignment, styling, and section layout.
+4. Use the bundled builder at
+   `.agents/skills/resume-tailor/scripts/resume_builder.js`. Create
+   `data_<company>.js` in that same `scripts` directory so it can import the
+   builder with `require("./resume_builder")`. Before running it, install the
+   skill's dependencies if `docx` is unavailable:
+
+   ```sh
+   npm install --prefix .agents/skills/resume-tailor
+   ```
+
+   Preserve the existing resume's fonts, spacing, date alignment, styling, and
+   section layout.
 
 5. Modify only these sections:
 

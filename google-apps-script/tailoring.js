@@ -70,7 +70,7 @@ function buildTailoringTask(data) {
       editableSections: ["Professional Summary / Objective", "Skills / Technologies"],
       preserveStrongMatches: true,
       requireConfirmedKeywords: true,
-      renderWith: "resume_builder.js",
+      renderWith: ".agents/skills/resume-tailor/scripts/resume_builder.js",
     },
   };
 }

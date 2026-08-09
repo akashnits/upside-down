@@ -1,0 +1,8 @@
+{
+  "name": "upside-down-resume-tailor-skill",
+  "private": true,
+  "description": "Runtime dependencies for the Upside Down resume-tailoring skill.",
+  "dependencies": {
+    "docx": "^9.5.1"
+  }
+}
