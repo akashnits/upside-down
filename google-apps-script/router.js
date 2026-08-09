@@ -72,7 +72,11 @@ function doPost(e) {
       // 4. Update persisted rubric and current score for existing entries
       if (existingEntry) {
         try {
-          updateNotionPage(existingEntry.pageId, { analysis: analysis });
+          updateNotionPage(existingEntry.pageId, {
+            analysis: analysis,
+            systemState: existingEntry.systemState,
+            systemStateBlockId: existingEntry.systemStateBlockId,
+          });
           Logger.log(`[INFO] Updated ATS coverage in Notion for Job ID: ${data.jobId}`);
         } catch (err) {
           Logger.log(`[WARN] Could not update ATS in Notion: ${err.toString()}`);
@@ -108,6 +112,8 @@ function doPost(e) {
 
       if (existingEntry) {
         // Do not create or replace a Drive draft during task preparation.
+        data.systemState = existingEntry.systemState;
+        data.systemStateBlockId = existingEntry.systemStateBlockId;
         updateNotionPage(existingEntry.pageId, data);
         Logger.log(`[INFO] Updated existing Notion entry: ${existingEntry.pageId}`);
       } else {

@@ -148,6 +148,8 @@ function startTailoringTask(data) {
       draftFolderId: draft.folderId,
       draftDocumentId: draft.documentId,
       status: "Tailoring",
+      systemState: entry.systemState,
+      systemStateBlockId: entry.systemStateBlockId,
     });
 
     return {
@@ -198,6 +200,8 @@ function completeTailoringTask(data) {
     draftDocumentId: documentId,
     resumeUrl: getGoogleDocUrl(documentId),
     status: "To Review",
+    systemState: entry.systemState,
+    systemStateBlockId: entry.systemStateBlockId,
   });
 
   return {

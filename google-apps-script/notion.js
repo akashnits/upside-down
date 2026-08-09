@@ -1,17 +1,41 @@
-// notion.js — Notion Database CRUD operations
-// Functions: findNotionEntry, updateNotionPage, saveToNotion, initNotionDatabase
+// notion.js - Jobs tracker CRUD and page-body workflow state
 
 const NOTION_RICH_TEXT_CHUNK_SIZE = 1900;
+const NOTION_SYSTEM_STATE_VERSION = 1;
+const NOTION_SYSTEM_STATE_MARKER = "[Upside Down system state - managed]";
+
+// These properties are intentionally the only fields exposed by the Jobs tracker.
+const LEGACY_NOTION_PROPERTIES = [
+  "Confidence",
+  "Current ATS Score",
+  "Baseline ATS Score",
+  "ATS Rubric",
+  "Rubric Version",
+  "JD Hash",
+  "Tailoring Task",
+  "Draft Folder ID",
+  "Draft Document ID",
+  "Gist Link",
+];
 
 function getNotionRichTextValue(property) {
-  if (!property || !Array.isArray(property.rich_text)) return "";
-  return property.rich_text
+  return getNotionPlainText(property && property.rich_text);
+}
+
+function getNotionPlainText(richText) {
+  if (!Array.isArray(richText)) return "";
+  return richText
     .map(item => item.plain_text || (item.text && item.text.content) || "")
     .join("");
 }
 
 function getNotionNumberValue(property) {
   return property && typeof property.number === "number" ? property.number : null;
+}
+
+function getNotionPercentScore(property) {
+  const value = getNotionNumberValue(property);
+  return value === null ? null : Math.round(value * 10000) / 100;
 }
 
 function parseStoredRubric(value) {
@@ -36,49 +60,199 @@ function parseStoredTailoringTask(value) {
   }
 }
 
-function buildNotionRichTextProperty(value) {
-  if (!value) return { rich_text: [] };
+function buildNotionRichText(value) {
+  if (!value) return [];
+
   const chunks = [];
   for (let i = 0; i < value.length; i += NOTION_RICH_TEXT_CHUNK_SIZE) {
     chunks.push({ text: { content: value.substring(i, i + NOTION_RICH_TEXT_CHUNK_SIZE) } });
   }
-  return { rich_text: chunks };
+
+  if (chunks.length > 100) {
+    throw new Error("Tailoring state exceeds Notion's block rich-text limit");
+  }
+  return chunks;
 }
 
-function buildRubricProperties(analysis) {
-  const properties = {};
-  if (analysis.rubric) {
-    properties["ATS Rubric"] = buildNotionRichTextProperty(JSON.stringify(analysis.rubric));
-    properties["Rubric Version"] = buildNotionRichTextProperty(String(analysis.rubricVersion || analysis.rubric.version || "1"));
-    properties["JD Hash"] = buildNotionRichTextProperty(String(analysis.rubric.jdHash || ""));
+function buildNotionRichTextProperty(value) {
+  return { rich_text: buildNotionRichText(value) };
+}
+
+function getLegacySystemState(properties) {
+  const baselineScore = getNotionPercentScore(properties["Baseline ATS Score"]);
+  const currentScore = getNotionPercentScore(properties["Current ATS Score"]);
+  const trackerScore = getNotionPercentScore(properties["ATS Score"]);
+  const state = {
+    version: NOTION_SYSTEM_STATE_VERSION,
+    rubric: parseStoredRubric(getNotionRichTextValue(properties["ATS Rubric"])),
+    rubricVersion: getNotionRichTextValue(properties["Rubric Version"]) || null,
+    jdHash: getNotionRichTextValue(properties["JD Hash"]) || null,
+    baselineScore,
+    currentScore: currentScore === null ? trackerScore : currentScore,
+    tailoringTask: parseStoredTailoringTask(getNotionRichTextValue(properties["Tailoring Task"])),
+    draftFolderId: getNotionRichTextValue(properties["Draft Folder ID"]) || null,
+    draftDocumentId: getNotionRichTextValue(properties["Draft Document ID"]) || null,
+  };
+
+  return hasSystemStateData(state) ? state : null;
+}
+
+function hasSystemStateData(state) {
+  return Boolean(state && (
+    state.rubric ||
+    state.rubricVersion ||
+    state.jdHash ||
+    typeof state.baselineScore === "number" ||
+    typeof state.currentScore === "number" ||
+    state.tailoringTask ||
+    state.draftFolderId ||
+    state.draftDocumentId
+  ));
+}
+
+function mergeSystemState(base, override) {
+  const merged = Object.assign({}, base || {}, override || {});
+  merged.version = NOTION_SYSTEM_STATE_VERSION;
+  return merged;
+}
+
+function getNotionOptions(token, method, payload) {
+  const options = {
+    method,
+    contentType: "application/json",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Notion-Version": CONFIG.NOTION_VERSION,
+    },
+    muteHttpExceptions: true,
+  };
+  if (payload !== undefined) options.payload = JSON.stringify(payload);
+  return options;
+}
+
+function parseNotionResponse(response, expectedCode, context) {
+  const code = response.getResponseCode();
+  const text = response.getContentText();
+  if (code !== expectedCode) {
+    throw new Error(`${context} (${code}): ${text}`);
   }
-  if (typeof analysis.baselineScore === "number") {
-    properties["Baseline ATS Score"] = { number: analysis.baselineScore / 100 };
+  return text ? JSON.parse(text) : {};
+}
+
+function readNotionSystemState(pageId, token) {
+  let cursor = null;
+
+  do {
+    const cursorParam = cursor ? `&start_cursor=${encodeURIComponent(cursor)}` : "";
+    const response = UrlFetchApp.fetch(
+      `https://api.notion.com/v1/blocks/${pageId}/children?page_size=100${cursorParam}`,
+      getNotionOptions(token, "get"),
+    );
+    const data = parseNotionResponse(response, 200, "Notion block read error");
+
+    for (const block of data.results || []) {
+      if (block.type !== "toggle" || !block.toggle) continue;
+      const text = getNotionPlainText(block.toggle.rich_text);
+      if (!text.startsWith(`${NOTION_SYSTEM_STATE_MARKER}\n`)) continue;
+
+      try {
+        const state = JSON.parse(text.substring(NOTION_SYSTEM_STATE_MARKER.length + 1));
+        if (!state || state.version !== NOTION_SYSTEM_STATE_VERSION) {
+          throw new Error("unsupported state version");
+        }
+        return { state, blockId: block.id };
+      } catch (err) {
+        throw new Error(`Could not parse Notion system state: ${err.toString()}`);
+      }
+    }
+
+    cursor = data.has_more ? data.next_cursor : null;
+  } while (cursor);
+
+  return { state: null, blockId: null };
+}
+
+function buildSystemState(existingState, data) {
+  const analysis = data.analysis || {};
+  const state = mergeSystemState(existingState, {});
+
+  if (analysis.rubric) state.rubric = analysis.rubric;
+  if (analysis.rubricVersion || (analysis.rubric && analysis.rubric.version)) {
+    state.rubricVersion = analysis.rubricVersion || analysis.rubric.version;
   }
+  if (analysis.currentJdHash || (analysis.rubric && analysis.rubric.jdHash)) {
+    state.jdHash = analysis.currentJdHash || analysis.rubric.jdHash;
+  }
+  if (typeof analysis.baselineScore === "number") state.baselineScore = analysis.baselineScore;
+  if (typeof analysis.atsScore === "number") state.currentScore = analysis.atsScore;
+
+  if (Object.prototype.hasOwnProperty.call(data, "tailoringTask")) {
+    state.tailoringTask = data.tailoringTask;
+  }
+  if (Object.prototype.hasOwnProperty.call(data, "draftFolderId")) {
+    state.draftFolderId = data.draftFolderId;
+  }
+  if (Object.prototype.hasOwnProperty.call(data, "draftDocumentId")) {
+    state.draftDocumentId = data.draftDocumentId;
+  }
+
+  state.updatedAt = new Date().toISOString();
+  return state;
+}
+
+function writeNotionSystemState(pageId, data, token) {
+  let existingState = data.systemState || null;
+  let blockId = data.systemStateBlockId || null;
+
+  if (!existingState || !blockId) {
+    const stored = readNotionSystemState(pageId, token);
+    existingState = existingState || stored.state;
+    blockId = blockId || stored.blockId;
+  }
+
+  const state = buildSystemState(existingState, data);
+  const stateText = `${NOTION_SYSTEM_STATE_MARKER}\n${JSON.stringify(state)}`;
+  const block = {
+    object: "block",
+    type: "toggle",
+    toggle: { rich_text: buildNotionRichText(stateText) },
+  };
+
+  if (blockId) {
+    const response = UrlFetchApp.fetch(
+      `https://api.notion.com/v1/blocks/${blockId}`,
+      getNotionOptions(token, "patch", { toggle: block.toggle }),
+    );
+    parseNotionResponse(response, 200, "Notion system state update error");
+  } else {
+    const response = UrlFetchApp.fetch(
+      `https://api.notion.com/v1/blocks/${pageId}/children`,
+      getNotionOptions(token, "patch", { children: [block] }),
+    );
+    parseNotionResponse(response, 200, "Notion system state create error");
+  }
+
+  return state;
+}
+
+function buildTrackerProperties(data) {
+  const analysis = data.analysis || {};
+  const properties = {
+    "Date": { date: { start: new Date().toISOString().split("T")[0] } },
+  };
+
+  if (analysis.decision) properties["Decision"] = { select: { name: analysis.decision } };
   if (typeof analysis.atsScore === "number") {
-    properties["Current ATS Score"] = { number: analysis.atsScore / 100 };
-    properties["ATS Score"] = { number: analysis.atsScore / 100 };
+    properties["ATS Score"] = { number: (Math.round(analysis.atsScore * 100) / 100) / 100 };
   }
-  return properties;
-}
-
-function buildTailoringTaskProperties(data) {
-  const properties = {};
-  if (data.tailoringTask) {
-    properties["Tailoring Task"] = buildNotionRichTextProperty(JSON.stringify(data.tailoringTask));
-  }
-  if (data.draftFolderId) {
-    properties["Draft Folder ID"] = buildNotionRichTextProperty(String(data.draftFolderId));
-  }
-  if (data.draftDocumentId) {
-    properties["Draft Document ID"] = buildNotionRichTextProperty(String(data.draftDocumentId));
-  }
+  if (data.status) properties["Status"] = { select: { name: data.status } };
+  if (data.resumeUrl) properties["Resume Link"] = { url: data.resumeUrl };
   return properties;
 }
 
 /**
  * Query Notion DB for an existing entry by Job ID.
- * Returns the resume URL and any persisted ATS comparison state.
+ * Tracker fields remain in database properties; workflow state is in the page body.
  */
 function findNotionEntry(jobId) {
   const token = PROPERTIES.getProperty("NOTION_API_KEY");
@@ -88,208 +262,196 @@ function findNotionEntry(jobId) {
   const payload = {
     filter: {
       property: "Job ID",
-      rich_text: { equals: jobId }
+      rich_text: { equals: jobId },
     },
-    page_size: 1
+    page_size: 1,
   };
+  const response = UrlFetchApp.fetch(
+    `https://api.notion.com/v1/databases/${dbId}/query`,
+    getNotionOptions(token, "post", payload),
+  );
+  const data = parseNotionResponse(response, 200, "Notion query error");
 
-  const options = {
-    method: "post",
-    contentType: "application/json",
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "Notion-Version": CONFIG.NOTION_VERSION
-    },
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true
-  };
-
-  const response = UrlFetchApp.fetch(`https://api.notion.com/v1/databases/${dbId}/query`, options);
-  const data = JSON.parse(response.getContentText());
-
-  if (data.results && data.results.length > 0) {
-    const page = data.results[0];
-    const resumeLink = page.properties["Resume Link"];
-    const baselineValue = getNotionNumberValue(page.properties["Baseline ATS Score"]);
-    const currentValue = getNotionNumberValue(page.properties["Current ATS Score"]);
-    Logger.log(`[INFO] Found existing Notion entry for Job ID: ${jobId}`);
-    return {
-      pageId: page.id,
-      resumeUrl: (resumeLink && resumeLink.url) || null,
-      rubric: parseStoredRubric(getNotionRichTextValue(page.properties["ATS Rubric"])),
-      rubricVersion: getNotionRichTextValue(page.properties["Rubric Version"]) || null,
-      jdHash: getNotionRichTextValue(page.properties["JD Hash"]) || null,
-      baselineScore: baselineValue === null ? null : baselineValue * 100,
-      currentScore: currentValue === null ? null : currentValue * 100,
-      tailoringTask: parseStoredTailoringTask(getNotionRichTextValue(page.properties["Tailoring Task"])),
-      draftFolderId: getNotionRichTextValue(page.properties["Draft Folder ID"]) || null,
-      draftDocumentId: getNotionRichTextValue(page.properties["Draft Document ID"]) || null,
-      status: page.properties["Status"] && page.properties["Status"].select
-        ? page.properties["Status"].select.name
-        : null,
-    };
+  if (!data.results || !data.results.length) {
+    Logger.log(`[INFO] No existing Notion entry for Job ID: ${jobId}`);
+    return null;
   }
-  
-  Logger.log(`[INFO] No existing entry in Notion for Job ID: ${jobId}`);
-  return null;
+
+  const page = data.results[0];
+  const stored = readNotionSystemState(page.id, token);
+  const legacyState = getLegacySystemState(page.properties);
+  const systemState = mergeSystemState(legacyState, stored.state);
+  const resumeLink = page.properties["Resume Link"];
+
+  Logger.log(`[INFO] Found existing Notion entry for Job ID: ${jobId}`);
+  return {
+    pageId: page.id,
+    resumeUrl: (resumeLink && resumeLink.url) || null,
+    rubric: systemState.rubric || null,
+    rubricVersion: systemState.rubricVersion || null,
+    jdHash: systemState.jdHash || null,
+    baselineScore: typeof systemState.baselineScore === "number" ? systemState.baselineScore : null,
+    currentScore: typeof systemState.currentScore === "number" ? systemState.currentScore : null,
+    tailoringTask: systemState.tailoringTask || null,
+    draftFolderId: systemState.draftFolderId || null,
+    draftDocumentId: systemState.draftDocumentId || null,
+    systemState: hasSystemStateData(systemState) ? systemState : null,
+    systemStateBlockId: stored.blockId,
+    status: page.properties["Status"] && page.properties["Status"].select
+      ? page.properties["Status"].select.name
+      : null,
+  };
 }
 
-/**
- * Update an existing Notion page with latest analysis data.
- */
 function updateNotionPage(pageId, data, isRetry = false) {
   const token = PROPERTIES.getProperty("NOTION_API_KEY");
   if (!token) throw new Error("NOTION_API_KEY not set");
 
-  const analysis = data.analysis || {};
-  const properties = {
-    "Date": { date: { start: new Date().toISOString().split('T')[0] } }
-  };
+  const response = UrlFetchApp.fetch(
+    `https://api.notion.com/v1/pages/${pageId}`,
+    getNotionOptions(token, "patch", { properties: buildTrackerProperties(data) }),
+  );
 
-  if (analysis.decision) properties["Decision"] = { select: { name: analysis.decision } };
-  if (analysis.confidence) properties["Confidence"] = { select: { name: analysis.confidence } };
-  if (typeof analysis.atsScore === "number") {
-    properties["ATS Score"] = { number: (Math.round(analysis.atsScore * 100) / 100) / 100 };
-  }
-  if (data.status) properties["Status"] = { select: { name: data.status } };
-
-  const payload = { properties };
-
-  Object.assign(payload.properties, buildRubricProperties(analysis));
-  Object.assign(payload.properties, buildTailoringTaskProperties(data));
-
-  // Only update URL links if valid URLs were passed (prevents wiping them on early re-analysis)
-  if (data.gistUrl) {
-    payload.properties["Gist Link"] = { url: data.gistUrl };
-  }
-
-  // Only update Resume Link if a valid URL was passed
-  if (data.resumeUrl) {
-    payload.properties["Resume Link"] = { url: data.resumeUrl };
-  }
-
-  const options = {
-    method: "patch",
-    contentType: "application/json",
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "Notion-Version": CONFIG.NOTION_VERSION
-    },
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true
-  };
-
-  const response = UrlFetchApp.fetch(`https://api.notion.com/v1/pages/${pageId}`, options);
-  const responseCode = response.getResponseCode();
-  if (responseCode !== 200) {
+  if (response.getResponseCode() !== 200) {
     if (!isRetry) {
-      Logger.log(`[INFO] Notion update may require the ATS rubric schema. Initializing and retrying.`);
+      Logger.log("[INFO] Notion tracker schema may be missing. Initializing and retrying.");
       initNotionDatabase(PROPERTIES.getProperty("NOTION_DB_ID"), token);
       return updateNotionPage(pageId, data, true);
     }
-    throw new Error(`Notion Update Error (${responseCode}): ${response.getContentText()}`);
+    throw new Error(`Notion update error (${response.getResponseCode()}): ${response.getContentText()}`);
   }
+
+  writeNotionSystemState(pageId, data, token);
 }
 
-/**
- * Create a page in the Notion ATS Database (Tracker Only)
- */
 function saveToNotion(data, isRetry = false) {
   const token = PROPERTIES.getProperty("NOTION_API_KEY");
   const dbId = PROPERTIES.getProperty("NOTION_DB_ID");
-  
   if (!token || !dbId) throw new Error("NOTION_API_KEY or NOTION_DB_ID not set");
 
   const analysis = data.analysis || {};
+  const properties = Object.assign({
+    "Name": { title: [{ text: { content: `${data.company || "Unknown"} - ${data.role || "Unknown"}` } }] },
+    "Company": buildNotionRichTextProperty(data.company || "Unknown"),
+    "Role": buildNotionRichTextProperty(data.role || "Unknown"),
+    "Job Link": { url: data.jobUrl || null },
+    "Job ID": buildNotionRichTextProperty(data.jobId || "Unknown"),
+  }, buildTrackerProperties(data));
 
-  const payload = {
-    parent: { database_id: dbId },
-    properties: {
-      "Name": { title: [{ text: { content: `${data.company || "Unknown"} - ${data.role || "Unknown"}` } }] },
-      "Company": { rich_text: [{ text: { content: data.company || "Unknown" } }] },
-      "Role": { rich_text: [{ text: { content: data.role || "Unknown" } }] },
-      "Decision": { select: { name: analysis.decision || "MAYBE" } },
-      "Confidence": { select: { name: analysis.confidence || "MEDIUM" } },
-      "ATS Score": { number: (Math.round((analysis.atsScore || 0) * 100) / 100) / 100 },
-      "Job Link": { url: data.jobUrl || "" },
-      "Job ID": { rich_text: [{ text: { content: data.jobId || "Unknown" } }] },
-      "Gist Link": { url: data.gistUrl || null },
-      "Resume Link": { url: data.resumeUrl || null },
-      "Status": { select: { name: data.status || "To Review" } },
-      "Date": { date: { start: new Date().toISOString().split('T')[0] } }
-    }
-  };
+  if (!properties["Decision"]) {
+    properties["Decision"] = { select: { name: analysis.decision || "MAYBE" } };
+  }
+  if (!properties["Status"]) {
+    properties["Status"] = { select: { name: data.status || "To Review" } };
+  }
+  if (!properties["ATS Score"]) {
+    properties["ATS Score"] = { number: (Math.round((analysis.atsScore || 0) * 100) / 100) / 100 };
+  }
 
-  Object.assign(payload.properties, buildRubricProperties(analysis));
-  Object.assign(payload.properties, buildTailoringTaskProperties(data));
+  const response = UrlFetchApp.fetch(
+    CONFIG.NOTION_API_URL,
+    getNotionOptions(token, "post", { parent: { database_id: dbId }, properties }),
+  );
 
-  const options = {
-    method: "post",
-    contentType: "application/json",
-    headers: { 
-      "Authorization": `Bearer ${token}`,
-      "Notion-Version": CONFIG.NOTION_VERSION
-    },
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true
-  };
-
-  const response = UrlFetchApp.fetch(CONFIG.NOTION_API_URL, options);
-  const responseCode = response.getResponseCode();
-  const responseData = JSON.parse(response.getContentText());
-
-  if (responseCode !== 200) {
-    if (responseData.code === 'validation_error' && !isRetry) {
-      Logger.log(`[INFO] Validation error caught. Provisioning Notion Tracker schema...`);
+  if (response.getResponseCode() !== 200) {
+    const responseData = JSON.parse(response.getContentText());
+    if (responseData.code === "validation_error" && !isRetry) {
+      Logger.log("[INFO] Validation error caught. Provisioning Notion tracker schema.");
       initNotionDatabase(dbId, token);
       return saveToNotion(data, true);
     }
-    throw new Error(`Notion API Error (${responseCode}): ${JSON.stringify(responseData)}`);
+    throw new Error(`Notion API error (${response.getResponseCode()}): ${response.getContentText()}`);
   }
 
-  return responseData.url;
+  const page = JSON.parse(response.getContentText());
+  writeNotionSystemState(page.id, data, token);
+  return page.url;
 }
 
 /**
- * Auto-Initialize the Notion Database Schema if properties are missing
+ * Keeps the Jobs database limited to tracker properties. Existing legacy columns
+ * are removed only by migrateNotionTrackerState after all rows are backfilled.
  */
 function initNotionDatabase(dbId, token) {
-  Logger.log(`[INFO] Auto-initializing Notion Database schema for db: ${dbId}`);
   const payload = {
     properties: {
-      "Company": { "rich_text": {} },
-      "Role": { "rich_text": {} },
-      "Decision": { "select": { "options": [{ "name": "APPLY", "color": "green" }, { "name": "MAYBE", "color": "yellow" }, { "name": "SKIP", "color": "red" }] } },
-      "Confidence": { "select": { "options": [{ "name": "HIGH", "color": "green" }, { "name": "MEDIUM", "color": "yellow" }, { "name": "LOW", "color": "red" }] } },
-      "ATS Score": { "number": { "format": "percent" } },
-      "Current ATS Score": { "number": { "format": "percent" } },
-      "Baseline ATS Score": { "number": { "format": "percent" } },
-      "ATS Rubric": { "rich_text": {} },
-      "Rubric Version": { "rich_text": {} },
-      "JD Hash": { "rich_text": {} },
-      "Tailoring Task": { "rich_text": {} },
-      "Draft Folder ID": { "rich_text": {} },
-      "Draft Document ID": { "rich_text": {} },
-      "Job Link": { "url": {} },
-      "Job ID": { "rich_text": {} },
-      "Gist Link": { "url": {} },
-      "Resume Link": { "url": {} },
-      "Status": { "select": { "options": [{ "name": "Tailoring", "color": "yellow" }, { "name": "To Review", "color": "gray" }, { "name": "Applied", "color": "blue" }, { "name": "Interview", "color": "purple" }, { "name": "Rejected", "color": "red" }] } },
-      "Date": { "date": {} }
-    }
-  };
-
-  const options = {
-    method: "patch",
-    contentType: "application/json",
-    headers: { 
-      "Authorization": `Bearer ${token}`,
-      "Notion-Version": CONFIG.NOTION_VERSION
+      "Company": { rich_text: {} },
+      "Role": { rich_text: {} },
+      "Decision": { select: { options: [{ name: "APPLY", color: "green" }, { name: "MAYBE", color: "yellow" }, { name: "SKIP", color: "red" }] } },
+      "ATS Score": { number: { format: "percent" } },
+      "Job Link": { url: {} },
+      "Job ID": { rich_text: {} },
+      "Resume Link": { url: {} },
+      "Status": { select: { options: [{ name: "Tailoring", color: "yellow" }, { name: "To Review", color: "gray" }, { name: "Applied", color: "blue" }, { name: "Interview", color: "purple" }, { name: "Rejected", color: "red" }] } },
+      "Date": { date: {} },
     },
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true
   };
+  const response = UrlFetchApp.fetch(
+    `https://api.notion.com/v1/databases/${dbId}`,
+    getNotionOptions(token, "patch", payload),
+  );
+  parseNotionResponse(response, 200, "Notion tracker schema update error");
+}
 
-  const response = UrlFetchApp.fetch(`https://api.notion.com/v1/databases/${dbId}`, options);
-  Logger.log(`[INFO] Init schema response: ${response.getContentText()}`);
+function getNotionDatabaseSchema(dbId, token) {
+  const response = UrlFetchApp.fetch(
+    `https://api.notion.com/v1/databases/${dbId}`,
+    getNotionOptions(token, "get"),
+  );
+  return parseNotionResponse(response, 200, "Notion database schema read error");
+}
+
+function getAllNotionPages(dbId, token) {
+  const pages = [];
+  let cursor = null;
+  do {
+    const payload = { page_size: 100 };
+    if (cursor) payload.start_cursor = cursor;
+    const response = UrlFetchApp.fetch(
+      `https://api.notion.com/v1/databases/${dbId}/query`,
+      getNotionOptions(token, "post", payload),
+    );
+    const data = parseNotionResponse(response, 200, "Notion migration query error");
+    pages.push(...(data.results || []));
+    cursor = data.has_more ? data.next_cursor : null;
+  } while (cursor);
+  return pages;
+}
+
+/**
+ * One-time manual migration. It first backfills every legacy row into its page
+ * body, then removes the obsolete schema fields only when the backfill succeeds.
+ */
+function migrateNotionTrackerState() {
+  const token = PROPERTIES.getProperty("NOTION_API_KEY");
+  const dbId = PROPERTIES.getProperty("NOTION_DB_ID");
+  if (!token || !dbId) throw new Error("NOTION_API_KEY or NOTION_DB_ID not set");
+
+  const pages = getAllNotionPages(dbId, token);
+  let migrated = 0;
+
+  for (const page of pages) {
+    const stored = readNotionSystemState(page.id, token);
+    const legacyState = getLegacySystemState(page.properties);
+    if (!stored.state && legacyState) {
+      writeNotionSystemState(page.id, { systemState: legacyState }, token);
+      migrated += 1;
+    }
+  }
+
+  const schema = getNotionDatabaseSchema(dbId, token);
+  const removals = {};
+  for (const name of LEGACY_NOTION_PROPERTIES) {
+    if (schema.properties && schema.properties[name]) removals[name] = null;
+  }
+
+  if (Object.keys(removals).length) {
+    const response = UrlFetchApp.fetch(
+      `https://api.notion.com/v1/databases/${dbId}`,
+      getNotionOptions(token, "patch", { properties: removals }),
+    );
+    parseNotionResponse(response, 200, "Notion legacy property removal error");
+  }
+
+  return { pages: pages.length, migrated, removedProperties: Object.keys(removals) };
 }

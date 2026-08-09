@@ -77,6 +77,18 @@ High-concurrency, modularized GAS environment managed via `clasp`.
 4. The skill creates or reuses `Akash CVs / <Company> / <Role>_<JobId> / Akash_Raj` only when work starts.
 5. The completion callback validates the document, re-scores it with the saved rubric, and updates Notion for review.
 
+### Notion tracker model
+
+The Jobs database is deliberately limited to scan-friendly tracker fields: company,
+role, decision, status, job and resume links, current ATS score, date, and the
+hidden Job ID used for lookup. Rubrics, task payloads, Drive IDs, baseline scores,
+and other workflow metadata are stored in a collapsed `Upside Down system state`
+toggle within the job page, not as database columns.
+
+After deploying this change to an existing board, run
+`migrateNotionTrackerState` once from the Apps Script editor. It backfills every
+legacy row before removing the former internal columns.
+
 ---
 
 ## ⚙️ Setup & Deployment
