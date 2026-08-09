@@ -16,6 +16,16 @@ SKILL_ROOT="${CODEX_HOME:-$HOME/.codex}/skills/resume-tailor"
 [ -d "$SKILL_ROOT" ] || SKILL_ROOT=".agents/skills/resume-tailor"
 ```
 
+## Network access
+
+Both lifecycle commands POST to the provided Apps Script endpoint. They require
+outbound network access from the agent sandbox.
+
+If either command reports `fetch failed`, do not treat it as a task failure and
+do not recreate the task. Request narrowly scoped network permission for that
+exact `node ... task-client.js` command, then retry the unchanged command once.
+Only stop and report the error if the permission-backed retry also fails.
+
 ## Task lifecycle
 
 1. Claim the task before creating any resume file or Google Doc. This validates
@@ -65,5 +75,6 @@ SKILL_ROOT="${CODEX_HOME:-$HOME/.codex}/skills/resume-tailor"
 The response includes the finalized Google Doc URL and ATS score. The backend
 verifies the submitted Summary and Skills against the copied Base Resume,
 re-scores it with the saved rubric, and updates Notion.
-Report its document URL and score to the user. If any lifecycle call fails, stop
-and report the returned error instead of bypassing the task system.
+Report its document URL and score to the user. For backend lifecycle errors,
+stop and report the returned error instead of bypassing the task system. Treat
+the first `fetch failed` error as the network-permission case described above.
