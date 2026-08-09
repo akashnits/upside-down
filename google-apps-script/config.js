@@ -47,8 +47,8 @@ const CONFIG = {
  *
  * - OPENROUTER_API_KEY : Get from https://openrouter.ai/keys
  * - GITHUB_TOKEN      : GitHub PAT with 'gist' scope
- * - RESUME_DOC_ID     : Canonical base-resume Google Doc ID used for analysis.
- *                       Keep it aligned with baseline_resume_data.js.
+ * - RESUME_DOC_ID     : Canonical base-resume Google Doc ID. It is used for
+ *                       analysis and copied when a tailored resume is created.
  * - CVS_ROOT_FOLDER_ID : Folder ID for 'Akash CVs'
  * - SHEET_ID          : (Optional) Google Sheet ID for logging
  *

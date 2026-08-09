@@ -93,7 +93,7 @@ function doPost(e) {
 
     // --- ACTION: SAVE / PREPARE TAILORING TASK ---
     if (action === "save") {
-      // Persists the immutable task only. The agent claims the Drive folder on demand.
+      // Persists the immutable task only. The server creates the Drive copy after it receives a patch.
       const analysis = data.analysis;
       data.jobId = resolveJobId(data);
 
@@ -148,17 +148,17 @@ function doPost(e) {
       ).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // --- AGENT ACTION: CLAIM TASK AND CREATE/REUSE JOB FOLDER ---
+    // --- AGENT ACTION: CLAIM TASK AND READ CURRENT EDITABLE BASE CONTENT ---
     if (action === "claimTailoringTask") {
       return ContentService.createTextOutput(
         JSON.stringify({ success: true, ...claimTailoringTask(data) }),
       ).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // --- AGENT ACTION: VALIDATE, RESCORE, AND PERSIST COMPLETION ---
-    if (action === "completeTailoring") {
+    // --- AGENT ACTION: COPY BASE, APPLY PATCH, VERIFY, RESCORE, AND PERSIST ---
+    if (action === "applyTailoringPatch") {
       return ContentService.createTextOutput(
-        JSON.stringify({ success: true, ...completeTailoringTask(data) }),
+        JSON.stringify({ success: true, ...applyTailoringPatchForTask(data) }),
       ).setMimeType(ContentService.MimeType.JSON);
     }
   } catch (err) {
@@ -173,7 +173,8 @@ function doPost(e) {
 }
 
 // --- Resume functions moved to resume.js ---
-// getResumeContent, getDocTextFromUrl, createOrGetTailoringFolder
+// getResumeContent, getDocTextFromUrl, getEditableResumeContent,
+// createOrGetTailoringFolder, createOrGetTailoringDraft, applyTailoringPatch
 
 
 // --- Analysis functions moved to analysis.js ---
@@ -183,7 +184,7 @@ function doPost(e) {
 // findNotionEntry, updateNotionPage, saveToNotion, initNotionDatabase
 
 // --- Tailoring task functions moved to tailoring.js ---
-// buildTailoringTask, claimTailoringTask, completeTailoringTask
+// buildTailoringTask, claimTailoringTask, applyTailoringPatchForTask
 
 // --- Integration functions moved to integrations.js ---
 // createGist, logToSheet

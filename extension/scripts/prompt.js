@@ -13,8 +13,9 @@ function buildCoworkPrompt(taskReference) {
     };
 
     return `Use the resume-tailor skill to execute this tailoring task. Do not create a
-resume draft before invoking the skill. The skill will fetch the task, create or reuse
-the job-folder draft, validate the generated resume, and submit the completion callback.
+resume draft before invoking the skill. The skill will fetch the task and submit only a
+Summary/Skills patch. The backend will copy the canonical base resume into the job folder,
+apply and verify the patch, then rescore and update Notion.
 
 Task reference:
 ${JSON.stringify(task, null, 2)}`;

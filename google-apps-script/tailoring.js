@@ -1,8 +1,7 @@
 // tailoring.js — Signed task lifecycle for agent-executed resume tailoring
 
-const TAILORING_TASK_VERSION = 2;
+const TAILORING_TASK_VERSION = 3;
 const TAILORING_TOKEN_TTL_MS = 4 * 60 * 60 * 1000;
-const TAILORING_BASELINE_VERSION = "2026-08-09";
 
 function resolveJobId(data) {
   if (data && data.jobId) return String(data.jobId);
@@ -71,8 +70,6 @@ function buildTailoringTask(data) {
       editableSections: ["Professional Summary / Objective", "Skills / Technologies"],
       preserveStrongMatches: true,
       requireConfirmedKeywords: true,
-      renderer: "resume-tailor/render-tailored-resume",
-      baselineVersion: TAILORING_BASELINE_VERSION,
       outputName: "Akash_Raj",
     },
   };
@@ -112,18 +109,12 @@ function claimTailoringTask(data) {
   lock.waitLock(30000);
 
   try {
-    // Re-read after acquiring the lock so parallel agent retries share one draft.
+    // Re-read after acquiring the lock so a claimed task records a single lifecycle state.
     const entry = findNotionEntry(authorized.jobId);
     if (!entry || !entry.tailoringTask) {
       throw new Error("Tailoring task not found. Prepare the task from the extension first.");
     }
 
-    const folder = createOrGetTailoringFolder(
-      entry.tailoringTask.role,
-      entry.tailoringTask.company,
-      authorized.jobId,
-      entry.draftFolderId,
-    );
     const task = {
       ...entry.tailoringTask,
       status: "Tailoring",
@@ -133,7 +124,6 @@ function claimTailoringTask(data) {
     updateNotionPage(entry.pageId, {
       analysis: buildTaskAnalysis(task),
       tailoringTask: task,
-      draftFolderId: folder.folderId,
       status: "Tailoring",
       systemState: entry.systemState,
       systemStateBlockId: entry.systemStateBlockId,
@@ -141,66 +131,110 @@ function claimTailoringTask(data) {
 
     return {
       jobId: authorized.jobId,
-      task,
-      folderId: folder.folderId,
-      folderUrl: folder.folderUrl,
+      task: {
+        ...task,
+        editableContent: getEditableResumeContent(),
+      },
       outputName: task.constraints.outputName,
-      baselineVersion: task.constraints.baselineVersion,
     };
   } finally {
     lock.releaseLock();
   }
 }
 
-function completeTailoringTask(data) {
-  const authorized = getAuthorizedTailoringEntry(data);
-  const entry = authorized.entry;
-  const documentId = getGoogleDocIdFromUrl(data.documentUrl);
-
-  if (!entry.draftFolderId) {
-    throw new Error("No task folder exists. Start tailoring before completing it.");
+function normalizeTailoringPatch(patch) {
+  if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
+    throw new Error("Tailoring patch must be an object");
   }
-  if (!isDocumentInFolder(documentId, entry.draftFolderId)) {
-    throw new Error("The submitted document is not in this job's tailoring folder");
+  const keys = Object.keys(patch).sort().join(",");
+  if (keys !== "skills,summary") {
+    throw new Error("Tailoring patch may contain only summary and skills fields");
   }
-
-  const resumeText = getDocTextFromUrl(data.documentUrl);
-  const rubric = entry.tailoringTask.rubric || entry.rubric;
-  if (!rubric) throw new Error("No saved ATS rubric exists for this task");
-
-  validateTailoredResumeManifest(entry.tailoringTask, data.renderManifest, resumeText);
-
-  const ats = calculateATSScore(rubricToWeightedKeywords(rubric), resumeText);
-  const task = {
-    ...entry.tailoringTask,
-    status: "To Review",
-    completedAt: new Date().toISOString(),
-    completedDocumentId: documentId,
-  };
-  const analysis = buildTaskAnalysis(task, ats.score);
-  analysis.currentScore = ats.score;
-  analysis.scoreDelta = typeof analysis.baselineScore === "number"
-    ? ats.score - analysis.baselineScore
-    : null;
-
-  updateNotionPage(entry.pageId, {
-    analysis,
-    tailoringTask: task,
-    draftFolderId: entry.draftFolderId,
-    draftDocumentId: documentId,
-    resumeUrl: getGoogleDocUrl(documentId),
-    status: "To Review",
-    systemState: entry.systemState,
-    systemStateBlockId: entry.systemStateBlockId,
-  });
+  if (typeof patch.summary !== "string" || !patch.summary.trim()) {
+    throw new Error("Tailoring patch must include a non-empty summary");
+  }
+  if (patch.summary.trim().length > 2000) {
+    throw new Error("Tailoring summary is too long");
+  }
+  if (!Array.isArray(patch.skills) || !patch.skills.length || patch.skills.length > 15) {
+    throw new Error("Tailoring patch must include between 1 and 15 Skills rows");
+  }
 
   return {
-    jobId: authorized.jobId,
-    documentUrl: getGoogleDocUrl(documentId),
-    atsScore: ats.score,
-    baselineScore: analysis.baselineScore,
-    scoreDelta: analysis.scoreDelta,
+    summary: patch.summary.trim(),
+    skills: patch.skills.map((skill, index) => {
+      if (!skill || typeof skill.label !== "string" || typeof skill.value !== "string") {
+        throw new Error(`Skills row ${index + 1} must contain label and value strings`);
+      }
+      const label = skill.label.trim();
+      const value = skill.value.trim();
+      if (!label || !value || label.length > 100 || value.length > 600) {
+        throw new Error(`Skills row ${index + 1} is invalid`);
+      }
+      return { label, value };
+    }),
   };
+}
+
+function applyTailoringPatchForTask(data) {
+  const authorized = getAuthorizedTailoringEntry(data);
+  const patch = normalizeTailoringPatch(data.patch);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    const entry = findNotionEntry(authorized.jobId);
+    if (!entry || !entry.tailoringTask) {
+      throw new Error("Tailoring task not found. Prepare the task from the extension first.");
+    }
+    const rubric = entry.tailoringTask.rubric || entry.rubric;
+    if (!rubric) throw new Error("No saved ATS rubric exists for this task");
+
+    const draft = createOrGetTailoringDraft(
+      entry.tailoringTask.role,
+      entry.tailoringTask.company,
+      authorized.jobId,
+      entry.draftFolderId,
+      entry.draftDocumentId,
+    );
+    applyTailoringPatch(draft.documentId, patch);
+
+    const resumeText = getDocTextFromUrl(draft.documentUrl);
+    validateTailoringPatchInDocument(patch, resumeText);
+    const ats = calculateATSScore(rubricToWeightedKeywords(rubric), resumeText);
+    const task = {
+      ...entry.tailoringTask,
+      status: "To Review",
+      completedAt: new Date().toISOString(),
+      completedDocumentId: draft.documentId,
+    };
+    const analysis = buildTaskAnalysis(task, ats.score);
+    analysis.currentScore = ats.score;
+    analysis.scoreDelta = typeof analysis.baselineScore === "number"
+      ? ats.score - analysis.baselineScore
+      : null;
+
+    updateNotionPage(entry.pageId, {
+      analysis,
+      tailoringTask: task,
+      draftFolderId: draft.folderId,
+      draftDocumentId: draft.documentId,
+      resumeUrl: draft.documentUrl,
+      status: "To Review",
+      systemState: entry.systemState,
+      systemStateBlockId: entry.systemStateBlockId,
+    });
+
+    return {
+      jobId: authorized.jobId,
+      documentUrl: draft.documentUrl,
+      atsScore: ats.score,
+      baselineScore: analysis.baselineScore,
+      scoreDelta: analysis.scoreDelta,
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function normalizeVerificationText(value) {
@@ -211,28 +245,17 @@ function normalizeVerificationText(value) {
     .trim();
 }
 
-function validateTailoredResumeManifest(task, manifest, resumeText) {
-  if (!task.constraints || !task.constraints.renderer) return;
-  if (!manifest || typeof manifest !== "object") {
-    throw new Error("A renderer manifest is required to complete this tailoring task");
-  }
-  if (manifest.baselineVersion !== task.constraints.baselineVersion) {
-    throw new Error("Renderer manifest baseline version does not match this tailoring task");
-  }
-  if (!manifest.expected || typeof manifest.expected.summary !== "string" || !Array.isArray(manifest.expected.skills)) {
-    throw new Error("Renderer manifest is missing the expected Summary or Skills content");
-  }
-
+function validateTailoringPatchInDocument(patch, resumeText) {
   const renderedText = normalizeVerificationText(resumeText);
-  const summary = normalizeVerificationText(manifest.expected.summary);
+  const summary = normalizeVerificationText(patch.summary);
   if (!summary || !renderedText.includes(summary)) {
-    throw new Error("Imported Google Doc does not contain the rendered Summary from the manifest");
+    throw new Error("Tailored Google Doc does not contain the submitted Summary");
   }
 
-  for (const skill of manifest.expected.skills) {
+  for (const skill of patch.skills) {
     const expectedSkill = normalizeVerificationText(`${skill && skill.label} ${skill && skill.value}`);
     if (!expectedSkill || !renderedText.includes(expectedSkill)) {
-      throw new Error("Imported Google Doc does not contain all rendered Skills from the manifest");
+      throw new Error("Tailored Google Doc does not contain all submitted Skills rows");
     }
   }
 }

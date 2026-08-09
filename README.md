@@ -67,20 +67,19 @@ High-concurrency, modularized GAS environment managed via `clasp`.
 - **`atsEngine.js`**: The scoring brain (weighted coverage, alias matching, stemming, section diagnostics, and taxonomy).
 - **`notion.js`**: Seamless connection to Notion's Block API.
 - **`router.js`**: Central entry point for all endpoint requests.
-- **`tailoring.js`**: Signed task claim, folder lifecycle, completion validation, and deterministic re-scoring.
+- **`tailoring.js`**: Signed task claim, bounded patch lifecycle, verification, and deterministic re-scoring.
 
 ### Resume Tailoring Lifecycle
 
 1. Analyze a job and confirm any uncertain skills in the extension.
 2. Create prepares a signed task in Notion; it does not create a Drive document.
 3. Paste the compact dispatch into an agent with the `resume-tailor` skill.
-4. The skill claims the task, creates or reuses `Akash CVs / <Company> / <Role>_<JobId>`, and renders a resume from the canonical baseline with only Summary and Skills changed.
-5. The completion callback validates the document, re-scores it with the saved rubric, and updates Notion for review.
+4. The skill claims the task and returns only a `summary`/`skills` patch. Its current editable content is read from the canonical Base Resume Google Doc at claim time.
+5. The backend copies that Base Resume into `Akash CVs / <Company> / <Role>_<JobId>`, applies and verifies the bounded patch, re-scores it with the saved rubric, and updates Notion for review.
 
-The Apps Script `RESUME_DOC_ID` and the skill's
-`.agents/skills/resume-tailor/baseline_resume_data.js` must describe the same
-canonical base resume. The former is the analysis source; the latter is the
-deterministic rendering source.
+`RESUME_DOC_ID` is the only resume source of truth. The skill never stores or
+renders a second copy of the resume data. `resume_builder.js` remains a local
+formatting utility for deliberate Base Resume maintenance, not the tailoring runtime.
 
 ### Notion tracker model
 

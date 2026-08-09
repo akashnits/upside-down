@@ -1,22 +1,22 @@
 #!/usr/bin/env node
 
-const [command, endpoint, jobId, taskToken, documentUrl, manifestPath] = process.argv.slice(2);
+const [command, endpoint, jobId, taskToken, patchPath] = process.argv.slice(2);
 const actions = {
   claim: "claimTailoringTask",
-  complete: "completeTailoring",
+  apply: "applyTailoringPatch",
 };
 
-if (!actions[command] || !endpoint || !jobId || !taskToken || (command === "complete" && (!documentUrl || !manifestPath))) {
-  console.error("Usage: task-client.js <claim|complete> <endpoint> <jobId> <taskToken> [documentUrl manifestPath]");
+if (!actions[command] || !endpoint || !jobId || !taskToken || (command === "apply" && !patchPath)) {
+  console.error("Usage: task-client.js <claim|apply> <endpoint> <jobId> <taskToken> [patchPath]");
   process.exit(1);
 }
 
-let renderManifest;
-if (command === "complete") {
+let patch;
+if (command === "apply") {
   try {
-    renderManifest = JSON.parse(require("fs").readFileSync(manifestPath, "utf8"));
+    patch = JSON.parse(require("fs").readFileSync(patchPath, "utf8"));
   } catch (error) {
-    console.error(`Could not read render manifest: ${error.message}`);
+    console.error(`Could not read tailoring patch: ${error.message}`);
     process.exit(1);
   }
 }
@@ -29,8 +29,7 @@ async function run() {
       action: actions[command],
       jobId,
       taskToken,
-      ...(documentUrl ? { documentUrl } : {}),
-      ...(renderManifest ? { renderManifest } : {}),
+      ...(patch ? { patch } : {}),
     }),
   });
   const text = await response.text();
