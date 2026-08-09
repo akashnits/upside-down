@@ -10,7 +10,7 @@ const CONFIG = {
       API_URL: "https://openrouter.ai/api/v1/chat/completions",
       API_KEY_PROP: "OPENROUTER_API_KEY",
       MODELS: {
-        ANALYSIS: "openai/gpt-4.1",
+        ANALYSIS: "openai/gpt-5.6-terra",
       },
     },
     GEMINI: {
