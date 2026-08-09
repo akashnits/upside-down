@@ -60,16 +60,21 @@
             const analysis = response.analysis;
 
             // Step 2: Show results and wait for Save
-            panel.showResult(analysis, () => {
+            panel.showResult(analysis, (userSelections) => {
                 panel.setSaveLoading();
+
+                const analysisForCreate = structuredClone(analysis);
+                const brief = analysisForCreate.tailoringBrief || analysisForCreate.analysisBrief || {};
+                brief.userSelections = userSelections;
+                analysisForCreate.tailoringBrief = brief;
 
                 chrome.runtime.sendMessage({
                     action: 'save',
-                    payload: { ...jobData, analysis: analysis }
+                    payload: { ...jobData, analysis: analysisForCreate }
                 }, (saveResponse) => {
                     if (saveResponse?.success) {
                         // Assemble Cowork Prompt
-                        const promptText = buildCoworkPrompt(jobData, analysis, saveResponse.resumeUrl);
+                        const promptText = buildCoworkPrompt(jobData, analysisForCreate, saveResponse.resumeUrl);
 
                         // Copy to clipboard
                         navigator.clipboard.writeText(promptText).then(() => {

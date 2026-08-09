@@ -36,8 +36,8 @@ ${tailoringBrief}
 
 Task Requirements & Execution Rules:
 1. SOURCE OF TRUTH
-   Treat the Analysis Brief JSON as authoritative. Use its priority, expected gain,
-   missingKeywords, weakMatches, strongMatches, highRoiFixes, and suggestedSummary fields.
+   Treat the Analysis Brief JSON as authoritative. Use its priority, missingKeywords,
+   weakMatches, strongMatches, highRoiFixes, suggestedSummary, and userSelections fields.
 
 2. APPLY HIGH-ROI ACTIONS FIRST
    Work through highRoiFixes in priority order.
@@ -60,8 +60,9 @@ Task Requirements & Execution Rules:
    Preserve all strongMatches. Do not remove, weaken, or replace their terminology.
 
 6. UNKNOWN EXPERIENCE
-   If a keyword is marked needs_confirmation, ask for confirmation before adding it.
-   Never add unsupported technologies, responsibilities, or qualifications.
+   Add needs_confirmation keywords only when they appear in userSelections.confirmedKeywords.
+   Do not ask follow-up questions for excluded or unconfirmed keywords. Never add unsupported
+   technologies, responsibilities, or qualifications.
 
 7. FORMAT PRESERVATION
    Read the resume content from the provided link, then produce the output by populating

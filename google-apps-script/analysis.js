@@ -260,6 +260,54 @@ function buildCompactAnalysisMarkdown(brief) {
   ].join("\n");
 }
 
+function buildConfirmationOptions(highRoiFixes, deterministicBrief) {
+  const missingByKeyword = {};
+  ["required", "preferred", "nice_to_have"].forEach(tier => {
+    (deterministicBrief.missingKeywords[tier] || []).forEach(item => {
+      missingByKeyword[item.keyword.toLowerCase()] = { ...item, tier };
+    });
+  });
+
+  const options = [];
+  const seen = new Set();
+  (highRoiFixes || []).forEach(fix => {
+    if (!fix || typeof fix !== "object" || fix.evidenceStatus === "supported") return;
+    (Array.isArray(fix.keywords) ? fix.keywords : []).forEach(keyword => {
+      const match = missingByKeyword[String(keyword).toLowerCase()];
+      if (!match || seen.has(match.keyword.toLowerCase())) return;
+      seen.add(match.keyword.toLowerCase());
+      options.push({
+        keyword: match.keyword,
+        tier: match.tier,
+        reason: fix.evidenceSource || "Not evidenced clearly in the current resume",
+      });
+    });
+  });
+
+  return options.slice(0, 6);
+}
+
+function buildScanSummary(modelSummary, deterministicBrief, decision) {
+  if (typeof modelSummary === "string" && modelSummary.trim()) {
+    return modelSummary.trim();
+  }
+
+  const requiredGaps = (deterministicBrief.missingKeywords.required || [])
+    .slice(0, 2)
+    .map(item => item.keyword);
+  const strongMatches = (deterministicBrief.strongMatches || [])
+    .slice(0, 2)
+    .map(item => item.keyword);
+
+  if (requiredGaps.length) {
+    return `${decision === "APPLY" ? "This is worth tailoring" : "Your current match is limited"}; the biggest gaps are ${requiredGaps.join(" and ")}.`;
+  }
+  if (strongMatches.length) {
+    return `Your resume already shows relevant evidence in ${strongMatches.join(" and ")}.`;
+  }
+  return "Review the priority keyword gaps before deciding whether to tailor this resume.";
+}
+
 /**
  * Analyze a job against a resume using a previously generated rubric.
  */
@@ -302,6 +350,7 @@ Output strict JSON:
   "decision": "APPLY" | "MAYBE" | "SKIP",
   "confidence": "HIGH" | "MEDIUM" | "LOW",
   "effort": "LOW" | "MEDIUM" | "HIGH",
+  "scanSummary": "One plain-language sentence explaining the current fit and the most important gap or strength.",
   "suggestedSummary": "A 3-4 sentence summary using only supported themes and keywords.",
   "rejectionReasons": ["Short reason 1", "Short reason 2"],
   "highRoiFixes": [
@@ -311,7 +360,7 @@ Output strict JSON:
       "keywords": ["exact keyword"],
       "targetSection": "Summary | Skills",
       "evidenceSource": "Existing resume evidence or confirmation needed",
-      "evidenceStatus": "supported | needs_confirmation | unsupported"
+      "evidenceStatus": "supported | needs_confirmation"
     }
   ],
   "strongSignals": ["Short signal 1", "Short signal 2"]
@@ -320,7 +369,7 @@ Output strict JSON:
 Rules for this JSON:
 - Prioritize required missing keywords, then weak required matches, then preferred keywords.
 - Use only evidence visible in the resume for supported actions.
-- Mark unsupported technologies as needs_confirmation; never recommend inventing them.
+- Use needs_confirmation when a technology or qualification is not clearly evidenced in the resume. Never recommend inventing it.
 - Keep each reason, signal, and action concise enough for a quick scan.
 - Do not recommend repeating an already exact keyword solely for ATS scoring.`;
 
@@ -350,10 +399,12 @@ Rules for this JSON:
           .filter(value => typeof value === "number");
         return {
           ...item,
+          evidenceStatus: item.evidenceStatus === "supported" ? "supported" : "needs_confirmation",
           expectedGain: gains.length ? Math.max(...gains) : null,
         };
       })
     : [];
+  const confirmationOptions = buildConfirmationOptions(highRoiFixes, deterministicBrief);
 
   const tailoringBrief = {
     decision: modelAnalysis.decision || "MAYBE",
@@ -363,6 +414,7 @@ Rules for this JSON:
       currentCoverage: ats.score,
       sectionQuality: ats.sectionScore,
     },
+    scanSummary: buildScanSummary(modelAnalysis.scanSummary, deterministicBrief, modelAnalysis.decision || "MAYBE"),
     suggestedSummary: modelAnalysis.suggestedSummary || "",
     rejectionReasons: Array.isArray(modelAnalysis.rejectionReasons) ? modelAnalysis.rejectionReasons.slice(0, 3) : [],
     highRoiFixes,
@@ -371,6 +423,7 @@ Rules for this JSON:
     weakMatches: deterministicBrief.weakMatches,
     missingKeywords: deterministicBrief.missingKeywords,
     deprioritized: deterministicBrief.deprioritized,
+    confirmationOptions,
   };
 
   const allKeywords = weightedKeywords.map(k => k.term);
