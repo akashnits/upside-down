@@ -93,7 +93,7 @@ function doPost(e) {
 
     // --- ACTION: SAVE / PREPARE TAILORING TASK ---
     if (action === "save") {
-      // Persists the immutable task only. The agent creates the Drive draft on demand.
+      // Persists the immutable task only. The agent claims the Drive folder on demand.
       const analysis = data.analysis;
       data.jobId = resolveJobId(data);
 
@@ -108,10 +108,11 @@ function doPost(e) {
       }
 
       data.tailoringTask = buildTailoringTask(data);
+      data.draftDocumentId = null;
       data.status = "Tailoring";
 
       if (existingEntry) {
-        // Do not create or replace a Drive draft during task preparation.
+        // Do not create or replace a Drive document during task preparation.
         data.systemState = existingEntry.systemState;
         data.systemStateBlockId = existingEntry.systemStateBlockId;
         updateNotionPage(existingEntry.pageId, data);
@@ -147,17 +148,10 @@ function doPost(e) {
       ).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // --- AGENT ACTION: FETCH IMMUTABLE TASK ---
-    if (action === "getTailoringTask") {
+    // --- AGENT ACTION: CLAIM TASK AND CREATE/REUSE JOB FOLDER ---
+    if (action === "claimTailoringTask") {
       return ContentService.createTextOutput(
-        JSON.stringify({ success: true, ...getTailoringTask(data) }),
-      ).setMimeType(ContentService.MimeType.JSON);
-    }
-
-    // --- AGENT ACTION: CREATE OR REUSE JOB-FOLDER DRAFT ---
-    if (action === "startTailoring") {
-      return ContentService.createTextOutput(
-        JSON.stringify({ success: true, ...startTailoringTask(data) }),
+        JSON.stringify({ success: true, ...claimTailoringTask(data) }),
       ).setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -179,7 +173,7 @@ function doPost(e) {
 }
 
 // --- Resume functions moved to resume.js ---
-// getResumeContent, getDocTextFromUrl, duplicateResume, createOrGetTailoringDraft
+// getResumeContent, getDocTextFromUrl, createOrGetTailoringFolder
 
 
 // --- Analysis functions moved to analysis.js ---
@@ -189,7 +183,7 @@ function doPost(e) {
 // findNotionEntry, updateNotionPage, saveToNotion, initNotionDatabase
 
 // --- Tailoring task functions moved to tailoring.js ---
-// buildTailoringTask, getTailoringTask, startTailoringTask, completeTailoringTask
+// buildTailoringTask, claimTailoringTask, completeTailoringTask
 
 // --- Integration functions moved to integrations.js ---
 // createGist, logToSheet

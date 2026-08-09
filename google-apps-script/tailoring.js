@@ -1,7 +1,8 @@
 // tailoring.js — Signed task lifecycle for agent-executed resume tailoring
 
-const TAILORING_TASK_VERSION = 1;
+const TAILORING_TASK_VERSION = 2;
 const TAILORING_TOKEN_TTL_MS = 4 * 60 * 60 * 1000;
+const TAILORING_BASELINE_VERSION = "2026-08-09";
 
 function resolveJobId(data) {
   if (data && data.jobId) return String(data.jobId);
@@ -70,7 +71,9 @@ function buildTailoringTask(data) {
       editableSections: ["Professional Summary / Objective", "Skills / Technologies"],
       preserveStrongMatches: true,
       requireConfirmedKeywords: true,
-      renderWith: ".agents/skills/resume-tailor/scripts/resume_builder.js",
+      renderer: "resume-tailor/render-tailored-resume",
+      baselineVersion: TAILORING_BASELINE_VERSION,
+      outputName: "Akash_Raj",
     },
   };
 }
@@ -103,21 +106,7 @@ function getAuthorizedTailoringEntry(data) {
   return { jobId, entry };
 }
 
-function getTailoringTask(data) {
-  const authorized = getAuthorizedTailoringEntry(data);
-  const entry = authorized.entry;
-  return {
-    jobId: authorized.jobId,
-    task: entry.tailoringTask,
-    draft: entry.draftDocumentId ? {
-      documentId: entry.draftDocumentId,
-      folderId: entry.draftFolderId || "",
-      documentUrl: getGoogleDocUrl(entry.draftDocumentId),
-    } : null,
-  };
-}
-
-function startTailoringTask(data) {
+function claimTailoringTask(data) {
   const authorized = getAuthorizedTailoringEntry(data);
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -129,24 +118,22 @@ function startTailoringTask(data) {
       throw new Error("Tailoring task not found. Prepare the task from the extension first.");
     }
 
-    const draft = createOrGetTailoringDraft(
+    const folder = createOrGetTailoringFolder(
       entry.tailoringTask.role,
       entry.tailoringTask.company,
       authorized.jobId,
       entry.draftFolderId,
-      entry.draftDocumentId,
     );
     const task = {
       ...entry.tailoringTask,
       status: "Tailoring",
-      startedAt: entry.tailoringTask.startedAt || new Date().toISOString(),
+      claimedAt: entry.tailoringTask.claimedAt || new Date().toISOString(),
     };
 
     updateNotionPage(entry.pageId, {
       analysis: buildTaskAnalysis(task),
       tailoringTask: task,
-      draftFolderId: draft.folderId,
-      draftDocumentId: draft.documentId,
+      draftFolderId: folder.folderId,
       status: "Tailoring",
       systemState: entry.systemState,
       systemStateBlockId: entry.systemStateBlockId,
@@ -155,9 +142,10 @@ function startTailoringTask(data) {
     return {
       jobId: authorized.jobId,
       task,
-      documentUrl: draft.documentUrl,
-      documentId: draft.documentId,
-      folderId: draft.folderId,
+      folderId: folder.folderId,
+      folderUrl: folder.folderUrl,
+      outputName: task.constraints.outputName,
+      baselineVersion: task.constraints.baselineVersion,
     };
   } finally {
     lock.releaseLock();
@@ -179,6 +167,8 @@ function completeTailoringTask(data) {
   const resumeText = getDocTextFromUrl(data.documentUrl);
   const rubric = entry.tailoringTask.rubric || entry.rubric;
   if (!rubric) throw new Error("No saved ATS rubric exists for this task");
+
+  validateTailoredResumeManifest(entry.tailoringTask, data.renderManifest, resumeText);
 
   const ats = calculateATSScore(rubricToWeightedKeywords(rubric), resumeText);
   const task = {
@@ -211,4 +201,38 @@ function completeTailoringTask(data) {
     baselineScore: analysis.baselineScore,
     scoreDelta: analysis.scoreDelta,
   };
+}
+
+function normalizeVerificationText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/[^a-z0-9+#.]+/g, " ")
+    .trim();
+}
+
+function validateTailoredResumeManifest(task, manifest, resumeText) {
+  if (!task.constraints || !task.constraints.renderer) return;
+  if (!manifest || typeof manifest !== "object") {
+    throw new Error("A renderer manifest is required to complete this tailoring task");
+  }
+  if (manifest.baselineVersion !== task.constraints.baselineVersion) {
+    throw new Error("Renderer manifest baseline version does not match this tailoring task");
+  }
+  if (!manifest.expected || typeof manifest.expected.summary !== "string" || !Array.isArray(manifest.expected.skills)) {
+    throw new Error("Renderer manifest is missing the expected Summary or Skills content");
+  }
+
+  const renderedText = normalizeVerificationText(resumeText);
+  const summary = normalizeVerificationText(manifest.expected.summary);
+  if (!summary || !renderedText.includes(summary)) {
+    throw new Error("Imported Google Doc does not contain the rendered Summary from the manifest");
+  }
+
+  for (const skill of manifest.expected.skills) {
+    const expectedSkill = normalizeVerificationText(`${skill && skill.label} ${skill && skill.value}`);
+    if (!expectedSkill || !renderedText.includes(expectedSkill)) {
+      throw new Error("Imported Google Doc does not contain all rendered Skills from the manifest");
+    }
+  }
 }

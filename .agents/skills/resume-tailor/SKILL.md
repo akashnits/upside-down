@@ -1,6 +1,6 @@
 ---
 name: resume-tailor
-description: Execute an Upside Down resume-tailoring task from a signed task reference. Use for creating, validating, and completing a tailored resume through the Apps Script task lifecycle.
+description: Execute an Upside Down resume-tailoring task through the builder-first task lifecycle.
 ---
 
 # Resume Tailor
@@ -8,69 +8,80 @@ description: Execute an Upside Down resume-tailoring task from a signed task ref
 Use this skill only when the user provides an Upside Down task reference with
 `endpoint`, `jobId`, and `taskToken`.
 
+Set `SKILL_ROOT` once before running commands. Prefer the global installation;
+fall back to the checked-in project skill when working in this repository:
+
+```sh
+SKILL_ROOT="${CODEX_HOME:-$HOME/.codex}/skills/resume-tailor"
+[ -d "$SKILL_ROOT" ] || SKILL_ROOT=".agents/skills/resume-tailor"
+```
+
 ## Task lifecycle
 
-1. Fetch the immutable task.
-
-   ```sh
-   node .agents/skills/resume-tailor/scripts/task-client.js get \
-     "<endpoint>" "<jobId>" "<taskToken>"
-   ```
-
-2. Start the task before creating any resume file or Google Doc. This creates or
-   reuses the task's existing Drive location:
+1. Claim the task before creating any resume file or Google Doc. This validates
+   the task, returns its immutable analysis brief, and creates or reuses:
 
    ```text
-   Akash CVs / <Company> / <Role>_<JobId> / Akash_Raj
+   Akash CVs / <Company> / <Role>_<JobId>
    ```
 
    ```sh
-   node .agents/skills/resume-tailor/scripts/task-client.js start \
+   node "$SKILL_ROOT/scripts/task-client.js" claim \
      "<endpoint>" "<jobId>" "<taskToken>"
    ```
 
-3. Read the returned task and draft URL. The task's `analysisBrief` is the source
-   of truth for keyword priority, strong matches, and user selections.
+2. Read the returned `task`, `folderId`, and `outputName`. The task's
+   `analysisBrief` is the source of truth for keyword priority, strong matches,
+   and user selections.
 
-4. Use the bundled builder at
-   `.agents/skills/resume-tailor/scripts/resume_builder.js`. Create
-   `data_<company>.js` in that same `scripts` directory so it can import the
-   builder with `require("./resume_builder")`. Before running it, install the
-   skill's dependencies if `docx` is unavailable:
+3. Write `/tmp/<jobId>-patch.json` with exactly these fields:
 
-   ```sh
-   npm install --prefix .agents/skills/resume-tailor
+   ```json
+   {
+     "summary": "...",
+     "skills": [{ "label": "Languages", "value": "Java, ..." }]
+   }
    ```
 
-   Preserve the existing resume's fonts, spacing, date alignment, styling, and
-   section layout.
+   `skills` must contain the complete final Skills section, not only additions.
+   Use `$SKILL_ROOT/baseline_resume_data.js` as the canonical resume. Do not
+   read, copy, or edit a base Google Doc.
 
-5. Modify only these sections:
-
-   - Professional Summary / Objective
-   - Skills / Technologies
-
-   Preserve all strong matches. Add a `needs_confirmation` keyword only when it is
-   in `analysisBrief.userSelections.confirmedKeywords`. Never add excluded,
-   unconfirmed, or unsupported experience.
-
-6. Validate before completion:
-
-   - Selected supported keywords use their exact canonical term or approved alias.
-   - No keyword stuffing or unsupported claims were introduced.
-   - No section outside Summary and Skills changed.
-   - The final Google Doc is inside the task's job folder and is visually checked
-     in Google Docs-friendly format.
-
-7. Complete the task using the final Google Doc URL. Do not update Notion or
-   calculate the final ATS score yourself.
+4. Run the deterministic renderer. It clones every non-editable section from the
+   baseline, applies only the patch, and writes a DOCX plus a renderer manifest.
+   Install dependencies once when `docx` is unavailable:
 
    ```sh
-   node .agents/skills/resume-tailor/scripts/task-client.js complete \
-     "<endpoint>" "<jobId>" "<taskToken>" "<documentUrl>"
+   npm install --prefix "$SKILL_ROOT"
+   node "$SKILL_ROOT/scripts/render-tailored-resume.js" \
+     "/tmp/<jobId>-patch.json" "/tmp/<jobId>-Akash_Raj.docx" --fast
    ```
 
-The completion response is authoritative. It validates the document, re-scores it
-against the saved rubric, and updates Notion. Report its document URL and score to
-the user. If any lifecycle call fails, stop and report the returned error instead
-of bypassing the task system.
+   The renderer reports `layoutRisk`. PDF visual QA is required when
+   `layoutRisk.requiresVisualQa` is true. Otherwise the connector readback is
+   the fast-path verification gate. If `--fast` rejects the patch because of
+   layout risk, rerun without it and perform PDF visual QA.
+
+5. Import the DOCX as a native Google Doc named with `outputName`, move it to
+   the claimed `folderId`, and read the imported document through the Google Drive
+   connector. Confirm the rendered Summary and every Skills row are present. Do
+   not edit the imported Google Doc manually.
+
+6. Preserve every strong match. Add a `needs_confirmation` keyword only when it
+   is in `analysisBrief.userSelections.confirmedKeywords`. Do not add excluded,
+   unconfirmed, or unsupported experience. The renderer guarantees no section
+   outside Summary and Skills changes.
+
+7. Complete the task with the final Google Doc URL and renderer manifest. Do not
+   update Notion or calculate the final ATS score yourself.
+
+   ```sh
+   node "$SKILL_ROOT/scripts/task-client.js" complete \
+     "<endpoint>" "<jobId>" "<taskToken>" "<documentUrl>" \
+     "/tmp/<jobId>-Akash_Raj.docx.manifest.json"
+   ```
+
+The completion response verifies the rendered Summary and Skills against the
+imported Google Doc, re-scores it with the saved rubric, and updates Notion.
+Report its document URL and score to the user. If any lifecycle call fails, stop
+and report the returned error instead of bypassing the task system.

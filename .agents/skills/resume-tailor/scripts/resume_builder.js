@@ -256,7 +256,7 @@ function buildSkills(skills) {
  * @param {Object} data   Resume data (see schema at top of file)
  * @param {string} outPath  Absolute path for the output .docx
  */
-function buildResume(data, outPath) {
+async function buildResume(data, outPath) {
   const children = [
     ...buildHeader(data.contact),
     ...buildSummary(data.summary),
@@ -293,10 +293,9 @@ function buildResume(data, outPath) {
     }],
   });
 
-  Packer.toBuffer(doc).then(buf => {
-    fs.writeFileSync(outPath, buf);
-    console.log("Resume written to: " + outPath);
-  });
+  const buffer = await Packer.toBuffer(doc);
+  fs.writeFileSync(outPath, buffer);
+  return outPath;
 }
 
 module.exports = { buildResume };

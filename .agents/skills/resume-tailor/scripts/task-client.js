@@ -1,15 +1,24 @@
 #!/usr/bin/env node
 
-const [command, endpoint, jobId, taskToken, documentUrl] = process.argv.slice(2);
+const [command, endpoint, jobId, taskToken, documentUrl, manifestPath] = process.argv.slice(2);
 const actions = {
-  get: "getTailoringTask",
-  start: "startTailoring",
+  claim: "claimTailoringTask",
   complete: "completeTailoring",
 };
 
-if (!actions[command] || !endpoint || !jobId || !taskToken || (command === "complete" && !documentUrl)) {
-  console.error("Usage: task-client.js <get|start|complete> <endpoint> <jobId> <taskToken> [documentUrl]");
+if (!actions[command] || !endpoint || !jobId || !taskToken || (command === "complete" && (!documentUrl || !manifestPath))) {
+  console.error("Usage: task-client.js <claim|complete> <endpoint> <jobId> <taskToken> [documentUrl manifestPath]");
   process.exit(1);
+}
+
+let renderManifest;
+if (command === "complete") {
+  try {
+    renderManifest = JSON.parse(require("fs").readFileSync(manifestPath, "utf8"));
+  } catch (error) {
+    console.error(`Could not read render manifest: ${error.message}`);
+    process.exit(1);
+  }
 }
 
 async function run() {
@@ -21,6 +30,7 @@ async function run() {
       jobId,
       taskToken,
       ...(documentUrl ? { documentUrl } : {}),
+      ...(renderManifest ? { renderManifest } : {}),
     }),
   });
   const text = await response.text();

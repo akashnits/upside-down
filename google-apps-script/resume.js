@@ -1,6 +1,5 @@
-// resume.js — Resume & Drive operations
-// Functions: getResumeContent, getDocTextFromUrl, duplicateResume,
-//            createOrGetTailoringDraft
+// resume.js - Resume text and Drive folder operations
+// Functions: getResumeContent, getDocTextFromUrl, createOrGetTailoringFolder
 
 /**
  * Helper to fetch Resume Text from Google Doc (base resume)
@@ -42,26 +41,10 @@ function isDocumentInFolder(documentId, folderId) {
   return false;
 }
 
-function createOrGetTailoringDraft(role, company, jobId, existingFolderId, existingDocumentId) {
-  if (existingDocumentId) {
-    try {
-      const existingFile = DriveApp.getFileById(existingDocumentId);
-      if (!existingFolderId || isDocumentInFolder(existingDocumentId, existingFolderId)) {
-        return {
-          folderId: existingFolderId || "",
-          documentId: existingDocumentId,
-          documentUrl: existingFile.getUrl(),
-        };
-      }
-    } catch (err) {
-      Logger.log(`[WARN] Stored tailoring draft is unavailable: ${err.toString()}`);
-    }
-  }
-
-  const baseDocId = PROPERTIES.getProperty("RESUME_DOC_ID");
+function createOrGetTailoringFolder(role, company, jobId, existingFolderId) {
   const rootFolderId = PROPERTIES.getProperty("CVS_ROOT_FOLDER_ID");
-  if (!baseDocId || !rootFolderId) {
-    throw new Error("RESUME_DOC_ID and CVS_ROOT_FOLDER_ID must be set in Script Properties");
+  if (!rootFolderId) {
+    throw new Error("CVS_ROOT_FOLDER_ID must be set in Script Properties");
   }
 
   const sanitizedCompany = (company || "Unknown").replace(/[^a-zA-Z0-9 _-]/g, "");
@@ -72,36 +55,8 @@ function createOrGetTailoringDraft(role, company, jobId, existingFolderId, exist
     ? DriveApp.getFolderById(existingFolderId)
     : findOrCreateFolder(companyFolder, folderName);
 
-  const existingFiles = targetFolder.getFilesByName("Akash_Raj");
-  if (existingFiles.hasNext()) {
-    const existingFile = existingFiles.next();
-    return {
-      folderId: targetFolder.getId(),
-      documentId: existingFile.getId(),
-      documentUrl: existingFile.getUrl(),
-    };
-  }
-
-  const baseFile = DriveApp.getFileById(baseDocId);
-  const newFile = baseFile.makeCopy("Akash_Raj", targetFolder);
-  newFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
   return {
     folderId: targetFolder.getId(),
-    documentId: newFile.getId(),
-    documentUrl: newFile.getUrl(),
+    folderUrl: targetFolder.getUrl(),
   };
-}
-
-/**
- * Duplicates the Base Resume into a nested Drive folder structure:
- * Akash CVs -> [Company Name] -> [Role]_[JobId]
- * Returns the URL of the new document.
- */
-function duplicateResume(role, company, jobId) {
-  try {
-    return createOrGetTailoringDraft(role, company, jobId, "", "").documentUrl;
-  } catch (err) {
-    Logger.log(`[ERROR] Failed to duplicate resume: ${err.toString()}`);
-    return "";
-  }
 }

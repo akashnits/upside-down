@@ -12,7 +12,7 @@ Built for the modern job seeker. **Upside Down** is a high-performance Chrome Ex
 - 📊 **Deterministic ATS Engine** — Stable weighted keyword coverage with alias matching, stemming, section diagnostics, and a mini-taxonomy. No AI "guesses" in the score.
 - 🤖 **Multi-LLM Analysis** — Powered by Gemini and Mistral via OpenRouter. Extracts keywords and generates deep insights in a single pass.
 - 📓 **Notion Integration** — One-click export to your Job Tracking board. Automatically builds a rich Insight Card within your Notion database.
-- 📝 **Agent-Skill Resume Tailoring** — A signed tailoring task keeps the resume rules, user-confirmed skills, Drive draft, ATS re-score, and Notion completion lifecycle consistent.
+- 📝 **Agent-Skill Resume Tailoring** — A signed tailoring task keeps the resume rules, user-confirmed skills, Drive folder, ATS re-score, and Notion completion lifecycle consistent.
 
 ---
 
@@ -67,15 +67,20 @@ High-concurrency, modularized GAS environment managed via `clasp`.
 - **`atsEngine.js`**: The scoring brain (weighted coverage, alias matching, stemming, section diagnostics, and taxonomy).
 - **`notion.js`**: Seamless connection to Notion's Block API.
 - **`router.js`**: Central entry point for all endpoint requests.
-- **`tailoring.js`**: Signed task preparation, draft lifecycle, completion validation, and deterministic re-scoring.
+- **`tailoring.js`**: Signed task claim, folder lifecycle, completion validation, and deterministic re-scoring.
 
 ### Resume Tailoring Lifecycle
 
 1. Analyze a job and confirm any uncertain skills in the extension.
-2. Create prepares a signed task in Notion; it does not create a Drive draft.
+2. Create prepares a signed task in Notion; it does not create a Drive document.
 3. Paste the compact dispatch into an agent with the `resume-tailor` skill.
-4. The skill creates or reuses `Akash CVs / <Company> / <Role>_<JobId> / Akash_Raj` only when work starts.
+4. The skill claims the task, creates or reuses `Akash CVs / <Company> / <Role>_<JobId>`, and renders a resume from the canonical baseline with only Summary and Skills changed.
 5. The completion callback validates the document, re-scores it with the saved rubric, and updates Notion for review.
+
+The Apps Script `RESUME_DOC_ID` and the skill's
+`.agents/skills/resume-tailor/baseline_resume_data.js` must describe the same
+canonical base resume. The former is the analysis source; the latter is the
+deterministic rendering source.
 
 ### Notion tracker model
 
