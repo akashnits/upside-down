@@ -51,7 +51,10 @@ Only stop and report the error if the permission-backed retry also fails.
    ```
 
    `skills` must contain the complete final Skills section, not only additions.
-   Do not create, copy, import, or edit a Google Doc yourself.
+   It must have exactly the same number of rows as
+   `task.editableContent.skills`; consolidate additions into the existing rows
+   instead of adding or removing a row. Do not create, copy, import, or edit a
+   Google Doc yourself.
 
 4. Preserve every strong match. Add a `needs_confirmation` keyword only when it
    is in `analysisBrief.userSelections.confirmedKeywords`. Do not add excluded,

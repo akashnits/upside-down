@@ -51,11 +51,7 @@ class MockParagraph {
   setAttributes() {}
 
   removeFromParent() {
-    const index = this.parent.children.indexOf(this);
-    if (index === this.parent.children.length - 1) {
-      throw new Error("Can't remove the last paragraph in a document section.");
-    }
-    this.parent.children.splice(index, 1);
+    throw new Error("Resume patching must not remove paragraphs");
   }
 }
 
@@ -76,12 +72,6 @@ class MockBody {
     return this.children[index];
   }
 
-  insertParagraph(index, text) {
-    const paragraph = new MockParagraph(text);
-    paragraph.parent = this;
-    this.children.splice(index, 0, paragraph);
-    return paragraph;
-  }
 }
 
 const baseLines = [
@@ -132,6 +122,7 @@ context.applyTailoringPatch("base", {
   skills: [
     { label: "Languages", value: "Java, Python, SQL" },
     { label: "Platforms", value: "AWS, Docker, Kubernetes" },
+    { label: "Others", value: "DynamoDB, Kafka" },
   ],
 });
 
@@ -141,6 +132,7 @@ assert.deepStrictEqual(
     "AKASH RAJ",
     "SUMMARY",
     "Backend engineer building Java services on AWS.",
+    "",
     "EXPERIENCE",
     "Senior Engineer",
     "Delivered event-driven systems.",
@@ -149,28 +141,19 @@ assert.deepStrictEqual(
     "SKILLS",
     "Languages - Java, Python, SQL",
     "Platforms - AWS, Docker, Kubernetes",
+    "Others - DynamoDB, Kafka",
     "",
   ],
 );
 
-context.applyTailoringPatch("base", {
-  summary: "Backend engineer building Java services on AWS.",
-  skills: [
-    { label: "Languages", value: "Java, Python, SQL" },
-    { label: "Platforms", value: "AWS, Docker, Kubernetes" },
-    { label: "Data", value: "DynamoDB, Kafka" },
-  ],
-});
-
-assert.deepStrictEqual(
-  body.children.slice(-4).map(paragraph => paragraph.text),
-  [
-    "SKILLS",
-    "Languages - Java, Python, SQL",
-    "Platforms - AWS, Docker, Kubernetes",
-    "Data - DynamoDB, Kafka",
-  ],
+assert.throws(
+  () => context.applyTailoringPatch("base", {
+    summary: "This must not replace the summary.",
+    skills: [{ label: "Languages", value: "Java" }],
+  }),
+  /preserve the Base Resume's 3 Skills rows/,
 );
+assert.strictEqual(body.children[2].text, "Backend engineer building Java services on AWS.");
 
 vm.runInContext(fs.readFileSync("google-apps-script/tailoring.js", "utf8"), context);
 assert.throws(

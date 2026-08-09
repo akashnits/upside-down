@@ -177,17 +177,13 @@ function updateParagraphText(paragraph, value, attributes) {
 function replaceSummarySection(body, summary) {
   const section = getSummarySection(body);
   const paragraphs = section.paragraphs.filter(paragraph => paragraph.getText().trim());
-  if (!paragraphs.length) throw new Error("The base resume Summary section is empty");
+  if (paragraphs.length !== 1) {
+    throw new Error("The base resume Summary section must contain exactly one paragraph");
+  }
 
   const paragraph = paragraphs[0];
   const sourceText = paragraph.editAsText();
   updateParagraphText(paragraph, summary, getTextAttributes(sourceText, 0));
-
-  for (let index = section.paragraphs.length - 1; index >= 0; index -= 1) {
-    if (section.paragraphs[index] !== paragraph) {
-      section.paragraphs[index].removeFromParent();
-    }
-  }
 }
 
 function getSkillStyleTemplate(paragraph) {
@@ -197,7 +193,6 @@ function getSkillStyleTemplate(paragraph) {
 
   const text = paragraph.editAsText();
   return {
-    paragraphAttributes: paragraph.getAttributes(),
     separator: match[2],
     labelAttributes: getTextAttributes(text, 0),
     valueAttributes: getTextAttributes(text, match[1].length + match[2].length),
@@ -213,49 +208,35 @@ function writeSkillParagraph(paragraph, skill, template) {
   text.setAttributes(label.length, value.length - 1, template.valueAttributes);
 }
 
-function clearParagraph(paragraph) {
-  paragraph.editAsText().setText("");
-}
-
-function isLastBodyParagraph(body, paragraph) {
-  return body.getNumChildren() > 0 && body.getChild(body.getNumChildren() - 1) === paragraph;
-}
-
 function replaceSkillsSection(body, skills) {
   const section = getSkillsSection(body);
   const paragraphs = section.paragraphs.filter(paragraph => paragraph.getText().trim());
   if (!paragraphs.length) throw new Error("The base resume Skills section is empty");
+  if (skills.length !== paragraphs.length) {
+    throw new Error(`Tailoring patch must preserve the Base Resume's ${paragraphs.length} Skills rows`);
+  }
 
   const template = getSkillStyleTemplate(paragraphs[0]);
-  const sharedCount = Math.min(paragraphs.length, skills.length);
-  for (let index = 0; index < sharedCount; index += 1) {
+  for (let index = 0; index < paragraphs.length; index += 1) {
     writeSkillParagraph(paragraphs[index], skills[index], template);
-  }
-
-  const retained = paragraphs.slice(0, sharedCount);
-  for (let index = section.paragraphs.length - 1; index >= 0; index -= 1) {
-    const paragraph = section.paragraphs[index];
-    if (!retained.includes(paragraph)) {
-      if (isLastBodyParagraph(body, paragraph)) {
-        clearParagraph(paragraph);
-      } else {
-        paragraph.removeFromParent();
-      }
-    }
-  }
-
-  for (let index = sharedCount; index < skills.length; index += 1) {
-    const updatedSection = getSkillsSection(body);
-    const paragraph = updatedSection.paragraphs.find(item => !item.getText().trim())
-      || body.insertParagraph(updatedSection.nextHeadingIndex, "");
-    paragraph.setAttributes(template.paragraphAttributes);
-    writeSkillParagraph(paragraph, skills[index], template);
   }
 }
 
 function applyTailoringPatch(documentId, patch) {
   const document = DocumentApp.openById(documentId);
   const body = document.getBody();
+
+  const summaryParagraphs = getSummarySection(body).paragraphs
+    .filter(paragraph => paragraph.getText().trim());
+  const skillParagraphs = getSkillsSection(body).paragraphs
+    .filter(paragraph => paragraph.getText().trim());
+  if (summaryParagraphs.length !== 1) {
+    throw new Error("The base resume Summary section must contain exactly one paragraph");
+  }
+  if (patch.skills.length !== skillParagraphs.length) {
+    throw new Error(`Tailoring patch must preserve the Base Resume's ${skillParagraphs.length} Skills rows`);
+  }
+
   replaceSummarySection(body, patch.summary);
   replaceSkillsSection(body, patch.skills);
   document.saveAndClose();

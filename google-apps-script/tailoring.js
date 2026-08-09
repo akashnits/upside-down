@@ -176,6 +176,13 @@ function normalizeTailoringPatch(patch) {
   };
 }
 
+function validatePatchAgainstBaseResume(patch) {
+  const baseSkills = getEditableResumeContent().skills;
+  if (patch.skills.length !== baseSkills.length) {
+    throw new Error(`Tailoring patch must preserve the Base Resume's ${baseSkills.length} Skills rows`);
+  }
+}
+
 function applyTailoringPatchForTask(data) {
   const authorized = getAuthorizedTailoringEntry(data);
   const patch = normalizeTailoringPatch(data.patch);
@@ -183,6 +190,7 @@ function applyTailoringPatchForTask(data) {
   lock.waitLock(30000);
 
   try {
+    validatePatchAgainstBaseResume(patch);
     const entry = findNotionEntry(authorized.jobId);
     if (!entry || !entry.tailoringTask) {
       throw new Error("Tailoring task not found. Prepare the task from the extension first.");
