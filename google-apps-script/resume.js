@@ -213,6 +213,14 @@ function writeSkillParagraph(paragraph, skill, template) {
   text.setAttributes(label.length, value.length - 1, template.valueAttributes);
 }
 
+function clearParagraph(paragraph) {
+  paragraph.editAsText().setText("");
+}
+
+function isLastBodyParagraph(body, paragraph) {
+  return body.getNumChildren() > 0 && body.getChild(body.getNumChildren() - 1) === paragraph;
+}
+
 function replaceSkillsSection(body, skills) {
   const section = getSkillsSection(body);
   const paragraphs = section.paragraphs.filter(paragraph => paragraph.getText().trim());
@@ -226,17 +234,22 @@ function replaceSkillsSection(body, skills) {
 
   const retained = paragraphs.slice(0, sharedCount);
   for (let index = section.paragraphs.length - 1; index >= 0; index -= 1) {
-    if (!retained.includes(section.paragraphs[index])) {
-      section.paragraphs[index].removeFromParent();
+    const paragraph = section.paragraphs[index];
+    if (!retained.includes(paragraph)) {
+      if (isLastBodyParagraph(body, paragraph)) {
+        clearParagraph(paragraph);
+      } else {
+        paragraph.removeFromParent();
+      }
     }
   }
 
-  let insertionIndex = getSkillsSection(body).nextHeadingIndex;
   for (let index = sharedCount; index < skills.length; index += 1) {
-    const paragraph = body.insertParagraph(insertionIndex, "");
+    const updatedSection = getSkillsSection(body);
+    const paragraph = updatedSection.paragraphs.find(item => !item.getText().trim())
+      || body.insertParagraph(updatedSection.nextHeadingIndex, "");
     paragraph.setAttributes(template.paragraphAttributes);
     writeSkillParagraph(paragraph, skills[index], template);
-    insertionIndex += 1;
   }
 }
 

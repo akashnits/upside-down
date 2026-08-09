@@ -51,7 +51,11 @@ class MockParagraph {
   setAttributes() {}
 
   removeFromParent() {
-    this.parent.children.splice(this.parent.children.indexOf(this), 1);
+    const index = this.parent.children.indexOf(this);
+    if (index === this.parent.children.length - 1) {
+      throw new Error("Can't remove the last paragraph in a document section.");
+    }
+    this.parent.children.splice(index, 1);
   }
 }
 
@@ -145,6 +149,26 @@ assert.deepStrictEqual(
     "SKILLS",
     "Languages - Java, Python, SQL",
     "Platforms - AWS, Docker, Kubernetes",
+    "",
+  ],
+);
+
+context.applyTailoringPatch("base", {
+  summary: "Backend engineer building Java services on AWS.",
+  skills: [
+    { label: "Languages", value: "Java, Python, SQL" },
+    { label: "Platforms", value: "AWS, Docker, Kubernetes" },
+    { label: "Data", value: "DynamoDB, Kafka" },
+  ],
+});
+
+assert.deepStrictEqual(
+  body.children.slice(-4).map(paragraph => paragraph.text),
+  [
+    "SKILLS",
+    "Languages - Java, Python, SQL",
+    "Platforms - AWS, Docker, Kubernetes",
+    "Data - DynamoDB, Kafka",
   ],
 );
 
