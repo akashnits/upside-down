@@ -87,10 +87,11 @@ function doPost(e) {
       ).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // --- ACTION: SAVE ---
+    // --- ACTION: SAVE / PREPARE TAILORING TASK ---
     if (action === "save") {
-      // Expects: data.analysis (object), data.company, data.role, data.jobUrl
+      // Persists the immutable task only. The agent creates the Drive draft on demand.
       const analysis = data.analysis;
+      data.jobId = resolveJobId(data);
 
       // Check if this Job ID already exists in Notion
       let existingEntry = null;
@@ -102,69 +103,62 @@ function doPost(e) {
         }
       }
 
-      // 3. Create Gist (always create a new one for latest analysis)
-      let gistUrl = "";
-      try {
-        gistUrl = createGist(analysis.markdown, data.company, data.role);
-        Logger.log(`[INFO] Gist created: ${gistUrl}`);
-      } catch (err) {
-        Logger.log(`[ERROR] Failed to create Gist: ${err.toString()}`);
-        throw new Error("Gist creation failed.");
-      }
-
-      let newResumeUrl = "";
+      data.tailoringTask = buildTailoringTask(data);
+      data.status = "Tailoring";
 
       if (existingEntry) {
-        // Reuse existing resume doc — no new duplicates
-        newResumeUrl = existingEntry.resumeUrl || "";
-        Logger.log(`[INFO] Reusing existing resume: ${newResumeUrl}`);
-
-        // Update the existing Notion page with latest analysis
-        try {
-          data.gistUrl = gistUrl;
-          data.resumeUrl = newResumeUrl;
-          updateNotionPage(existingEntry.pageId, data);
-          Logger.log(`[INFO] Updated existing Notion entry: ${existingEntry.pageId}`);
-        } catch (err) {
-          Logger.log(`[WARN] Notion update failed: ${err.toString()}`);
-        }
+        // Do not create or replace a Drive draft during task preparation.
+        updateNotionPage(existingEntry.pageId, data);
+        Logger.log(`[INFO] Updated existing Notion entry: ${existingEntry.pageId}`);
       } else {
-        // 4. Duplicate Resume for Tailoring (first time only)
-        try {
-          newResumeUrl = duplicateResume(data.role, data.company, data.jobId);
-          Logger.log(`[INFO] Created tailored resume draft: ${newResumeUrl}`);
-        } catch (err) {
-          Logger.log(`[ERROR] Resume duplication failed: ${err.toString()}`);
-        }
-
-        // 5. Save to Notion (new entry)
-        try {
-          data.gistUrl = gistUrl;
-          data.resumeUrl = newResumeUrl;
-          saveToNotion(data);
-          Logger.log(`[INFO] Saved new Notion entry`);
-        } catch (err) {
-          Logger.log(`[WARN] Notion save failed: ${err.toString()}`);
-        }
+        // Save the task record before the agent creates the job-folder draft.
+        saveToNotion(data);
+        Logger.log(`[INFO] Saved new Notion entry`);
       }
 
-      // 6. Log to Sheet (Optional Secondary tracking)
-      logToSheet({
-        company: data.company,
-        role: data.role,
-        decision: analysis.decision,
-        confidence: analysis.confidence,
-        effort: analysis.effort,
-        gistUrl: gistUrl,
-        jobUrl: data.jobUrl,
-      });
+      // Log to Sheet (Optional Secondary tracking)
+      try {
+        logToSheet({
+          company: data.company,
+          role: data.role,
+          decision: analysis.decision,
+          confidence: analysis.confidence,
+          effort: analysis.effort,
+          gistUrl: "",
+          jobUrl: data.jobUrl,
+        });
+      } catch (err) {
+        Logger.log(`[WARN] Optional Sheet log failed: ${err.toString()}`);
+      }
 
       return ContentService.createTextOutput(
         JSON.stringify({
           success: true,
-          gistUrl: gistUrl, 
-          resumeUrl: newResumeUrl || (PROPERTIES.getProperty("RESUME_DOC_ID") ? `https://docs.google.com/document/d/${PROPERTIES.getProperty("RESUME_DOC_ID")}/edit` : "")
+          jobId: data.jobId,
+          taskToken: issueTaskToken(data.jobId),
+          agentEndpoint: getCurrentWebAppUrl(),
         }),
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // --- AGENT ACTION: FETCH IMMUTABLE TASK ---
+    if (action === "getTailoringTask") {
+      return ContentService.createTextOutput(
+        JSON.stringify({ success: true, ...getTailoringTask(data) }),
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // --- AGENT ACTION: CREATE OR REUSE JOB-FOLDER DRAFT ---
+    if (action === "startTailoring") {
+      return ContentService.createTextOutput(
+        JSON.stringify({ success: true, ...startTailoringTask(data) }),
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // --- AGENT ACTION: VALIDATE, RESCORE, AND PERSIST COMPLETION ---
+    if (action === "completeTailoring") {
+      return ContentService.createTextOutput(
+        JSON.stringify({ success: true, ...completeTailoringTask(data) }),
       ).setMimeType(ContentService.MimeType.JSON);
     }
   } catch (err) {
@@ -179,7 +173,7 @@ function doPost(e) {
 }
 
 // --- Resume functions moved to resume.js ---
-// getResumeContent, getDocTextFromUrl, duplicateResume
+// getResumeContent, getDocTextFromUrl, duplicateResume, createOrGetTailoringDraft
 
 
 // --- Analysis functions moved to analysis.js ---
@@ -187,6 +181,9 @@ function doPost(e) {
 
 // --- Notion functions moved to notion.js ---
 // findNotionEntry, updateNotionPage, saveToNotion, initNotionDatabase
+
+// --- Tailoring task functions moved to tailoring.js ---
+// buildTailoringTask, getTailoringTask, startTailoringTask, completeTailoringTask
 
 // --- Integration functions moved to integrations.js ---
 // createGist, logToSheet

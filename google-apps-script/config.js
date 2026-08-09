@@ -50,4 +50,6 @@ const CONFIG = {
  * - RESUME_DOC_ID     : Google Doc ID containing your resume
  * - CVS_ROOT_FOLDER_ID : Folder ID for 'Akash CVs'
  * - SHEET_ID          : (Optional) Google Sheet ID for logging
+ *
+ * TAILORING_TASK_SIGNING_SECRET is generated automatically on first task creation.
  */

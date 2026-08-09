@@ -73,8 +73,8 @@
                     payload: { ...jobData, analysis: analysisForCreate }
                 }, (saveResponse) => {
                     if (saveResponse?.success) {
-                        // Assemble Cowork Prompt
-                        const promptText = buildCoworkPrompt(jobData, analysisForCreate, saveResponse.resumeUrl);
+                        // Assemble compact agent-skill dispatch prompt.
+                        const promptText = buildCoworkPrompt(saveResponse);
 
                         // Copy to clipboard
                         navigator.clipboard.writeText(promptText).then(() => {

@@ -216,9 +216,8 @@ function createPanel() {
             const result = document.getElementById('ud-result');
             const messages = [
                 "Saving to Notion...",
-                "Creating Drive folder...",
-                "Duplicating base resume...",
-                "Generating prompt..."
+                "Preparing tailoring task...",
+                "Generating skill dispatch..."
             ];
 
             result.innerHTML = `
@@ -249,8 +248,8 @@ function createPanel() {
             result.innerHTML = `
                 <div style="text-align:center; padding:20px 20px 10px;">
                     <div style="font-size:40px; margin-bottom:10px;">🎉</div>
-                    <h3 style="margin:0 0 10px 0; color:#155724;">Saved to Tracker!</h3>
-                    <div style="color:#666; font-size:13px; margin-bottom:15px;">Paste the prompt below into Cowork to tailor your resume.</div>
+                    <h3 style="margin:0 0 10px 0; color:#155724;">Tailoring task ready</h3>
+                    <div style="color:#666; font-size:13px; margin-bottom:15px;">Paste this into your agent. It creates the draft only when work starts.</div>
                 </div>
                 
                 <div style="position:relative; background:#f8f9fa; border:1px solid #e5e7eb; border-radius:8px; padding:16px; margin:0 0 20px 0; text-align:left;">

@@ -25,6 +25,17 @@ function parseStoredRubric(value) {
   }
 }
 
+function parseStoredTailoringTask(value) {
+  if (!value) return null;
+  try {
+    const task = JSON.parse(value);
+    return task && task.version && task.jobId ? task : null;
+  } catch (err) {
+    Logger.log(`[WARN] Could not parse stored tailoring task: ${err.toString()}`);
+    return null;
+  }
+}
+
 function buildNotionRichTextProperty(value) {
   if (!value) return { rich_text: [] };
   const chunks = [];
@@ -47,6 +58,20 @@ function buildRubricProperties(analysis) {
   if (typeof analysis.atsScore === "number") {
     properties["Current ATS Score"] = { number: analysis.atsScore / 100 };
     properties["ATS Score"] = { number: analysis.atsScore / 100 };
+  }
+  return properties;
+}
+
+function buildTailoringTaskProperties(data) {
+  const properties = {};
+  if (data.tailoringTask) {
+    properties["Tailoring Task"] = buildNotionRichTextProperty(JSON.stringify(data.tailoringTask));
+  }
+  if (data.draftFolderId) {
+    properties["Draft Folder ID"] = buildNotionRichTextProperty(String(data.draftFolderId));
+  }
+  if (data.draftDocumentId) {
+    properties["Draft Document ID"] = buildNotionRichTextProperty(String(data.draftDocumentId));
   }
   return properties;
 }
@@ -96,6 +121,12 @@ function findNotionEntry(jobId) {
       jdHash: getNotionRichTextValue(page.properties["JD Hash"]) || null,
       baselineScore: baselineValue === null ? null : baselineValue * 100,
       currentScore: currentValue === null ? null : currentValue * 100,
+      tailoringTask: parseStoredTailoringTask(getNotionRichTextValue(page.properties["Tailoring Task"])),
+      draftFolderId: getNotionRichTextValue(page.properties["Draft Folder ID"]) || null,
+      draftDocumentId: getNotionRichTextValue(page.properties["Draft Document ID"]) || null,
+      status: page.properties["Status"] && page.properties["Status"].select
+        ? page.properties["Status"].select.name
+        : null,
     };
   }
   
@@ -110,18 +141,22 @@ function updateNotionPage(pageId, data, isRetry = false) {
   const token = PROPERTIES.getProperty("NOTION_API_KEY");
   if (!token) throw new Error("NOTION_API_KEY not set");
 
-  const analysis = data.analysis;
-
-  const payload = {
-    properties: {
-      "Decision": { select: { name: analysis.decision || "MAYBE" } },
-      "Confidence": { select: { name: analysis.confidence || "MEDIUM" } },
-      "ATS Score": { number: (Math.round((analysis.atsScore || 0) * 100) / 100) / 100 },
-      "Date": { date: { start: new Date().toISOString().split('T')[0] } }
-    }
+  const analysis = data.analysis || {};
+  const properties = {
+    "Date": { date: { start: new Date().toISOString().split('T')[0] } }
   };
 
+  if (analysis.decision) properties["Decision"] = { select: { name: analysis.decision } };
+  if (analysis.confidence) properties["Confidence"] = { select: { name: analysis.confidence } };
+  if (typeof analysis.atsScore === "number") {
+    properties["ATS Score"] = { number: (Math.round(analysis.atsScore * 100) / 100) / 100 };
+  }
+  if (data.status) properties["Status"] = { select: { name: data.status } };
+
+  const payload = { properties };
+
   Object.assign(payload.properties, buildRubricProperties(analysis));
+  Object.assign(payload.properties, buildTailoringTaskProperties(data));
 
   // Only update URL links if valid URLs were passed (prevents wiping them on early re-analysis)
   if (data.gistUrl) {
@@ -165,7 +200,7 @@ function saveToNotion(data, isRetry = false) {
   
   if (!token || !dbId) throw new Error("NOTION_API_KEY or NOTION_DB_ID not set");
 
-  const analysis = data.analysis;
+  const analysis = data.analysis || {};
 
   const payload = {
     parent: { database_id: dbId },
@@ -180,12 +215,13 @@ function saveToNotion(data, isRetry = false) {
       "Job ID": { rich_text: [{ text: { content: data.jobId || "Unknown" } }] },
       "Gist Link": { url: data.gistUrl || null },
       "Resume Link": { url: data.resumeUrl || null },
-      "Status": { select: { name: "To Review" } },
+      "Status": { select: { name: data.status || "To Review" } },
       "Date": { date: { start: new Date().toISOString().split('T')[0] } }
     }
   };
 
   Object.assign(payload.properties, buildRubricProperties(analysis));
+  Object.assign(payload.properties, buildTailoringTaskProperties(data));
 
   const options = {
     method: "post",
@@ -231,11 +267,14 @@ function initNotionDatabase(dbId, token) {
       "ATS Rubric": { "rich_text": {} },
       "Rubric Version": { "rich_text": {} },
       "JD Hash": { "rich_text": {} },
+      "Tailoring Task": { "rich_text": {} },
+      "Draft Folder ID": { "rich_text": {} },
+      "Draft Document ID": { "rich_text": {} },
       "Job Link": { "url": {} },
       "Job ID": { "rich_text": {} },
       "Gist Link": { "url": {} },
       "Resume Link": { "url": {} },
-      "Status": { "select": { "options": [{ "name": "To Review", "color": "gray" }, { "name": "Applied", "color": "blue" }, { "name": "Interview", "color": "purple" }, { "name": "Rejected", "color": "red" }] } },
+      "Status": { "select": { "options": [{ "name": "Tailoring", "color": "yellow" }, { "name": "To Review", "color": "gray" }, { "name": "Applied", "color": "blue" }, { "name": "Interview", "color": "purple" }, { "name": "Rejected", "color": "red" }] } },
       "Date": { "date": {} }
     }
   };
