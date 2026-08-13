@@ -18,13 +18,13 @@ async function readAppsScriptResponse(response, action) {
     }
 }
 
-function postToAppsScript(action, payload) {
+function postToAppsScript(action, payload, label) {
     return fetch(GAS_URL, {
         method: 'POST',
         redirect: 'follow',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ ...payload, action })
-    }).then(response => readAppsScriptResponse(response, action === 'analyze' ? 'Analyze' : 'Save'));
+    }).then(response => readAppsScriptResponse(response, label));
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -32,7 +32,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const action = request.action;
         console.log(`[Upside Down] Sending ${action} request...`);
 
-        postToAppsScript(action, request.payload)
+        postToAppsScript(action, request.payload, action === 'analyze' ? 'Analyze' : 'Save')
             .then(data => {
                 console.log(`[Upside Down] ${action} response:`, data.success ? 'OK' : data.error);
                 sendResponse(data);
@@ -41,6 +41,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 console.error(`[Upside Down] ${action} error:`, error);
                 sendResponse({ success: false, error: error.message });
             });
+
+        return true;
+    }
+
+    if (request.action === 'transportProbe') {
+        const delaysMs = [0, 10000, 20000, 30000];
+        (async () => {
+            const results = [];
+            for (const delayMs of delaysMs) {
+                const startedAt = Date.now();
+                try {
+                    await postToAppsScript('transportProbe', { delayMs }, 'Transport probe');
+                    results.push({ delayMs, ok: true, roundTripMs: Date.now() - startedAt });
+                } catch (error) {
+                    results.push({ delayMs, ok: false, roundTripMs: Date.now() - startedAt, error: error.message });
+                }
+            }
+            sendResponse({ success: true, results });
+        })().catch(error => sendResponse({ success: false, error: error.message }));
 
         return true;
     }

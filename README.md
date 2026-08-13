@@ -271,6 +271,7 @@ The tailoring patch logic runs under Node with a mocked `DocumentApp`, so no Goo
 ```bash
 node tests/analysis-brief.test.js
 node tests/resume-patch.test.js
+node tests/transport-probe.test.js
 ```
 
 ---

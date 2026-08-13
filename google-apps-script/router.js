@@ -14,6 +14,19 @@ function measureOperation(name, operation) {
   }
 }
 
+function runTransportProbe(data) {
+  const delayMs = Number(data && data.delayMs);
+  const allowedDelays = [0, 10000, 20000, 30000];
+  if (!allowedDelays.includes(delayMs)) {
+    throw new Error("Unsupported transport probe delay");
+  }
+
+  Logger.log(`[PROBE] Starting fixed-response probe at ${delayMs}ms`);
+  if (delayMs) Utilities.sleep(delayMs);
+  Logger.log(`[PROBE] Completed fixed-response probe at ${delayMs}ms`);
+  return { success: true, probe: "transport", delayMs };
+}
+
 function performAnalysis(data) {
   const jobDescription = data.jobDescription;
   const currentJdHash = computeJobDescriptionHash(jobDescription);
@@ -92,6 +105,12 @@ function doPost(e) {
     if (action === "analyze") {
       const analysis = measureOperation("Total analysis request", () => performAnalysis(data));
       return jsonOutput({ success: true, analysis });
+    }
+
+    // Temporary diagnostic: exercises the same ContentService response path
+    // without invoking model, Notion, Drive, or resume work.
+    if (action === "transportProbe") {
+      return jsonOutput(runTransportProbe(data));
     }
 
     // --- ACTION: SAVE / PREPARE TAILORING TASK ---
