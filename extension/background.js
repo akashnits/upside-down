@@ -13,6 +13,13 @@ async function readAppsScriptResponse(response, action) {
     }
 }
 
+function getAnalysisStatusUrl(jobId) {
+    const url = new URL(GAS_URL);
+    url.searchParams.set('action', 'analysisStatus');
+    url.searchParams.set('jobId', jobId);
+    return url.toString();
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "analyze") {
         console.log("[Upside Down] Sending analyze request...");
@@ -52,6 +59,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             })
             .catch(err => {
                 console.error("[Upside Down] Save error:", err);
+                sendResponse({ success: false, error: err.message });
+            });
+
+        return true;
+    }
+
+    if (request.action === "getAnalysisStatus") {
+        fetch(getAnalysisStatusUrl(request.jobId), {
+            method: "GET",
+            redirect: "follow"
+        })
+            .then(res => readAppsScriptResponse(res, "Analysis status"))
+            .then(sendResponse)
+            .catch(err => {
+                console.error("[Upside Down] Analysis status error:", err);
                 sendResponse({ success: false, error: err.message });
             });
 

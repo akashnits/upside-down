@@ -1,5 +1,87 @@
 const PROPERTIES = PropertiesService.getScriptProperties();
 
+function jsonOutput(value) {
+  return ContentService.createTextOutput(JSON.stringify(value))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doGet(e) {
+  try {
+    const action = e && e.parameter ? e.parameter.action : "";
+    if (action === "analysisStatus") {
+      return jsonOutput(getAnalysisJobStatus(e.parameter.jobId));
+    }
+    return jsonOutput({ success: false, error: "Unsupported GET action" });
+  } catch (err) {
+    Logger.log(`[ERROR] ${err.toString()}`);
+    return jsonOutput({ success: false, error: err.toString() });
+  }
+}
+
+function performAnalysis(data) {
+  const jobDescription = data.jobDescription;
+  const currentJdHash = computeJobDescriptionHash(jobDescription);
+
+  // Try the existing tailored resume first, then use the canonical Base Resume.
+  let resumeText = "";
+  let resumeSource = "base";
+  let existingEntry = null;
+  if (data.jobId) {
+    try {
+      existingEntry = findNotionEntry(data.jobId);
+      if (existingEntry && existingEntry.resumeUrl) {
+        resumeText = getDocTextFromUrl(existingEntry.resumeUrl);
+        resumeSource = "tailored";
+      }
+    } catch (err) {
+      Logger.log(`[WARN] Could not fetch tailored resume from Notion: ${err.toString()}`);
+    }
+  }
+
+  if (!resumeText) resumeText = getResumeContent();
+  Logger.log(`[INFO] Resume source: ${resumeSource}. Length: ${resumeText.length} chars`);
+
+  let rubric = existingEntry && existingEntry.rubric;
+  if (rubric) {
+    if (rubric.jdHash && rubric.jdHash !== currentJdHash) {
+      Logger.log(`[WARN] JD hash changed for Job ID ${data.jobId}; reusing stored rubric ${rubric.jdHash}`);
+    } else {
+      Logger.log(`[INFO] Reusing stored ATS rubric for Job ID: ${data.jobId}`);
+    }
+  } else {
+    Logger.log("[INFO] Generating ATS rubric from the job description");
+    rubric = extractJobRubric(jobDescription);
+  }
+
+  const analysis = analyzeJob(jobDescription, resumeText, rubric);
+  analysis.currentJdHash = currentJdHash;
+  analysis.currentScore = analysis.atsScore;
+  analysis.baselineScore = existingEntry && typeof existingEntry.baselineScore === "number"
+    ? existingEntry.baselineScore
+    : (!existingEntry ? analysis.atsScore : null);
+  analysis.scoreDelta = typeof analysis.baselineScore === "number"
+    ? analysis.currentScore - analysis.baselineScore
+    : null;
+  if (analysis.tailoringBrief && analysis.tailoringBrief.ats) {
+    analysis.tailoringBrief.ats.baselineCoverage = analysis.baselineScore;
+    analysis.tailoringBrief.ats.currentCoverage = analysis.currentScore;
+    analysis.tailoringBrief.ats.delta = analysis.scoreDelta;
+  }
+
+  if (existingEntry) {
+    try {
+      updateNotionPage(existingEntry.pageId, {
+        analysis,
+        systemState: existingEntry.systemState,
+        systemStateBlockId: existingEntry.systemStateBlockId,
+      });
+    } catch (err) {
+      Logger.log(`[WARN] Could not update ATS in Notion: ${err.toString()}`);
+    }
+  }
+  return analysis;
+}
+
 /**
  * Main Entry Point: Receives POST request from Bookmarklet
  */
@@ -12,83 +94,7 @@ function doPost(e) {
 
     // --- ACTION: ANALYZE ---
     if (action === "analyze") {
-      const jobDescription = data.jobDescription;
-      const currentJdHash = computeJobDescriptionHash(jobDescription);
-
-      // 1. Try to fetch tailored resume from Notion, fall back to base resume
-      let resumeText = "";
-      let resumeSource = "base";
-      let existingEntry = null;
-      
-      if (data.jobId) {
-        try {
-          existingEntry = findNotionEntry(data.jobId);
-          if (existingEntry && existingEntry.resumeUrl) {
-            resumeText = getDocTextFromUrl(existingEntry.resumeUrl);
-            resumeSource = "tailored";
-            Logger.log(`[INFO] Using tailored resume from Notion for Job ID: ${data.jobId}`);
-          }
-        } catch (err) {
-          Logger.log(`[WARN] Could not fetch tailored resume from Notion: ${err.toString()}`);
-        }
-      }
-      
-      if (!resumeText) {
-        resumeText = getResumeContent();
-        Logger.log(`[INFO] Using base resume (fallback).`);
-      }
-      Logger.log(`[INFO] Resume source: ${resumeSource}. Length: ${resumeText.length} chars`);
-
-      // 2. Reuse the persisted rubric. Only legacy entries without a rubric generate one.
-      let rubric = existingEntry && existingEntry.rubric;
-      if (rubric) {
-        if (rubric.jdHash && rubric.jdHash !== currentJdHash) {
-          Logger.log(`[WARN] JD hash changed for Job ID ${data.jobId}; reusing stored rubric ${rubric.jdHash}`);
-        } else {
-          Logger.log(`[INFO] Reusing stored ATS rubric for Job ID: ${data.jobId}`);
-        }
-      } else {
-        Logger.log(`[INFO] Generating ATS rubric from the job description`);
-        rubric = extractJobRubric(jobDescription);
-      }
-
-      // 3. Analyze against the fixed rubric
-      const analysis = analyzeJob(jobDescription, resumeText, rubric);
-      analysis.currentJdHash = currentJdHash;
-      analysis.currentScore = analysis.atsScore;
-      analysis.baselineScore = existingEntry && typeof existingEntry.baselineScore === "number"
-        ? existingEntry.baselineScore
-        : (!existingEntry ? analysis.atsScore : null);
-      analysis.scoreDelta = typeof analysis.baselineScore === "number"
-        ? analysis.currentScore - analysis.baselineScore
-        : null;
-      if (analysis.tailoringBrief && analysis.tailoringBrief.ats) {
-        analysis.tailoringBrief.ats.baselineCoverage = analysis.baselineScore;
-        analysis.tailoringBrief.ats.currentCoverage = analysis.currentScore;
-        analysis.tailoringBrief.ats.delta = analysis.scoreDelta;
-      }
-      Logger.log(`[INFO] Analysis complete. Decision: ${analysis.decision}`);
-
-      // 4. Update persisted rubric and current score for existing entries
-      if (existingEntry) {
-        try {
-          updateNotionPage(existingEntry.pageId, {
-            analysis: analysis,
-            systemState: existingEntry.systemState,
-            systemStateBlockId: existingEntry.systemStateBlockId,
-          });
-          Logger.log(`[INFO] Updated ATS coverage in Notion for Job ID: ${data.jobId}`);
-        } catch (err) {
-          Logger.log(`[WARN] Could not update ATS in Notion: ${err.toString()}`);
-        }
-      }
-
-      return ContentService.createTextOutput(
-        JSON.stringify({
-          success: true,
-          analysis: analysis,
-        }),
-      ).setMimeType(ContentService.MimeType.JSON);
+      return jsonOutput(enqueueAnalysisJob(data));
     }
 
     // --- ACTION: SAVE / PREPARE TAILORING TASK ---
@@ -138,37 +144,26 @@ function doPost(e) {
         Logger.log(`[WARN] Optional Sheet log failed: ${err.toString()}`);
       }
 
-      return ContentService.createTextOutput(
-        JSON.stringify({
-          success: true,
-          jobId: data.jobId,
-          taskToken: issueTaskToken(data.jobId),
-          agentEndpoint: getCurrentWebAppUrl(),
-        }),
-      ).setMimeType(ContentService.MimeType.JSON);
+      return jsonOutput({
+        success: true,
+        jobId: data.jobId,
+        taskToken: issueTaskToken(data.jobId),
+        agentEndpoint: getCurrentWebAppUrl(),
+      });
     }
 
     // --- AGENT ACTION: CLAIM TASK AND READ CURRENT EDITABLE BASE CONTENT ---
     if (action === "claimTailoringTask") {
-      return ContentService.createTextOutput(
-        JSON.stringify({ success: true, ...claimTailoringTask(data) }),
-      ).setMimeType(ContentService.MimeType.JSON);
+      return jsonOutput({ success: true, ...claimTailoringTask(data) });
     }
 
     // --- AGENT ACTION: COPY BASE, APPLY PATCH, VERIFY, RESCORE, AND PERSIST ---
     if (action === "applyTailoringPatch") {
-      return ContentService.createTextOutput(
-        JSON.stringify({ success: true, ...applyTailoringPatchForTask(data) }),
-      ).setMimeType(ContentService.MimeType.JSON);
+      return jsonOutput({ success: true, ...applyTailoringPatchForTask(data) });
     }
   } catch (err) {
     Logger.log(`[ERROR] ${err.toString()}`);
-    return ContentService.createTextOutput(
-      JSON.stringify({
-        success: false,
-        error: err.toString(),
-      }),
-    ).setMimeType(ContentService.MimeType.JSON);
+    return jsonOutput({ success: false, error: err.toString() });
   }
 }
 
@@ -177,8 +172,8 @@ function doPost(e) {
 // createOrGetTailoringFolder, createOrGetTailoringDraft, applyTailoringPatch
 
 
-// --- Analysis functions moved to analysis.js ---
-// getProviderConfig, calculateATSScore, analyzeJob
+// --- Analysis functions moved to analysis.js / analysisJobs.js ---
+// getProviderConfig, calculateATSScore, analyzeJob, enqueueAnalysisJob
 
 // --- Notion functions moved to notion.js ---
 // findNotionEntry, updateNotionPage, saveToNotion, initNotionDatabase

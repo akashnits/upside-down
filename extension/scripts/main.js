@@ -48,8 +48,7 @@
         const panel = createPanel(); // from ui.js
         panel.setLoading();
 
-        // Step 1: Send to background.js for analysis
-        chrome.runtime.sendMessage({ action: 'analyze', payload: jobData }, (response) => {
+        function showAnalysis(response) {
             console.log('[Upside Down] Response:', response?.success ? 'OK' : response?.error);
             if (!response || !response.success) {
                 panel.showError(response?.error || 'Unknown error');
@@ -90,8 +89,30 @@
                     resetButton();
                 });
             });
+        }
 
-            resetButton();
+        function pollAnalysis(jobId, startedAt) {
+            chrome.runtime.sendMessage({ action: 'getAnalysisStatus', jobId }, (response) => {
+                if (response?.success && response.pending) {
+                    if (Date.now() - startedAt > 5 * 60 * 1000) {
+                        panel.showError('Analysis is taking too long. Run Analyze again.');
+                        resetButton();
+                        return;
+                    }
+                    setTimeout(() => pollAnalysis(jobId, startedAt), response.pollAfterMs || 1500);
+                    return;
+                }
+                showAnalysis(response);
+            });
+        }
+
+        // Step 1: start analysis. The backend returns quickly, then the worker result is polled.
+        chrome.runtime.sendMessage({ action: 'analyze', payload: jobData }, (response) => {
+            if (response?.success && response.pending && response.analysisJobId) {
+                setTimeout(() => pollAnalysis(response.analysisJobId, Date.now()), response.pollAfterMs || 1500);
+                return;
+            }
+            showAnalysis(response);
         });
     };
 })();
