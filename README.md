@@ -273,6 +273,7 @@ node tests/analysis-brief.test.js
 node tests/analysis-response-cache.test.js
 node tests/analysis-response-retry.test.js
 node tests/resume-patch.test.js
+node tests/save-response-idempotency.test.js
 ```
 
 ---

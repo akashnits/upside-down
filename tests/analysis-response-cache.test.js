@@ -25,19 +25,25 @@ vm.createContext(context);
 vm.runInContext(fs.readFileSync("google-apps-script/router.js", "utf8"), context);
 
 const requestId = "4f5d2a01-0279-4f4f-b0ab-9c01d44eab42";
-const response = { success: true, analysis: { atsScore: 42, decision: "APPLY" } };
+const analysisResponse = { success: true, analysis: { atsScore: 42, decision: "APPLY" } };
+const saveResponse = { success: true, jobId: "4450120692", taskToken: "task-token" };
 
-assert.strictEqual(context.getCachedAnalysisResponse(requestId), null);
-context.cacheAnalysisResponse(requestId, response);
+assert.strictEqual(context.getCachedResponse("analysis", requestId), null);
+context.cacheResponse("analysis", requestId, analysisResponse);
+context.cacheResponse("save", requestId, saveResponse);
 
-const cacheEntry = cache.get(context.getAnalysisResponseCacheKey(requestId));
+const cacheEntry = cache.get(context.getResponseCacheKey("analysis", requestId));
 assert.strictEqual(cacheEntry.ttlSeconds, 600);
 assert.deepStrictEqual(
-  JSON.parse(JSON.stringify(context.getCachedAnalysisResponse(requestId))),
-  response,
+  JSON.parse(JSON.stringify(context.getCachedResponse("analysis", requestId))),
+  analysisResponse,
 );
-assert.strictEqual(context.getCachedAnalysisResponse("invalid"), null);
-assert.ok(logs.some(message => message.includes("Analysis stored")));
-assert.ok(logs.some(message => message.includes("Analysis hit")));
+assert.deepStrictEqual(
+  JSON.parse(JSON.stringify(context.getCachedResponse("save", requestId))),
+  saveResponse,
+);
+assert.strictEqual(context.getCachedResponse("save", "invalid"), null);
+assert.ok(logs.some(message => message.includes("analysis stored")));
+assert.ok(logs.some(message => message.includes("save hit")));
 
 console.log("analysis response cache tests passed");

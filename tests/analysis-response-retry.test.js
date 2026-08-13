@@ -7,6 +7,8 @@ let messageListener;
 const responses = [
   { ok: false, status: 404, redirected: true, url: "https://script.googleusercontent.com/macros/temporary", text: async () => "Not found" },
   { ok: true, status: 200, redirected: true, url: "https://script.googleusercontent.com/macros/temporary", text: async () => JSON.stringify({ success: true, analysis: { atsScore: 42 } }) },
+  { ok: true, status: 200, redirected: true, url: "https://script.google.com/macros/error", text: async () => "<!DOCTYPE html><title>Page not found</title>" },
+  { ok: true, status: 200, redirected: true, url: "https://script.googleusercontent.com/macros/temporary", text: async () => JSON.stringify({ success: true, jobId: "4450120692", taskToken: "task-token" }) },
 ];
 
 const context = {
@@ -35,6 +37,14 @@ vm.runInContext(fs.readFileSync("extension/background.js", "utf8"), context);
   assert.strictEqual(requests.length, 2);
   assert.strictEqual(requests[0].analysisRequestId, "request-id-0123456789");
   assert.strictEqual(requests[1].analysisRequestId, requests[0].analysisRequestId);
+
+  const saveResult = await context.saveWithResponseRetry({ jobId: "4450120692" });
+  assert.deepStrictEqual(
+    JSON.parse(JSON.stringify(saveResult)),
+    { success: true, jobId: "4450120692", taskToken: "task-token" },
+  );
+  assert.strictEqual(requests[2].saveRequestId, "request-id-0123456789");
+  assert.strictEqual(requests[3].saveRequestId, requests[2].saveRequestId);
 
   responses.push({ ok: true, status: 200, redirected: true, url: "https://script.googleusercontent.com/macros/temporary", text: async () => JSON.stringify({ success: true, analysis: { atsScore: 84 } }) });
   await new Promise((resolve, reject) => {

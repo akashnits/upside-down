@@ -2,7 +2,7 @@
 // Import config - update GAS_URL in config.js with your deployed Apps Script URL
 importScripts('config.js');
 const GAS_URL = CONFIG.GAS_URL;
-const ANALYZE_RESPONSE_RETRY_DELAY_MS = 250;
+const RESPONSE_RETRY_DELAY_MS = 250;
 
 function createAnalysisRequestId() {
     if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -19,6 +19,10 @@ function responseTransportMetadata(response, text) {
     return `status=${response.status}; redirected=${response.redirected}; host=${host}; chars=${text.length}`;
 }
 
+function isRetryableResponseDeliveryFailure(action, status) {
+    return (action === 'Analyze' || action === 'Save') && (status === 404 || status === 200);
+}
+
 async function readAppsScriptResponse(response, action) {
     const text = await response.text();
     try {
@@ -26,7 +30,7 @@ async function readAppsScriptResponse(response, action) {
         if (!response.ok) {
             console.warn(`[Upside Down] ${action} response delivery failure: ${responseTransportMetadata(response, text)}`);
             const error = new Error(`${action} endpoint returned HTTP ${response.status}: ${data?.error || 'Unknown error'}`);
-            error.retryableResponseDeliveryFailure = action === 'Analyze' && response.status === 404;
+            error.retryableResponseDeliveryFailure = isRetryableResponseDeliveryFailure(action, response.status);
             throw error;
         }
         return data;
@@ -35,9 +39,7 @@ async function readAppsScriptResponse(response, action) {
         const detail = text.trim().replace(/\s+/g, ' ').slice(0, 200) || 'empty response';
         console.warn(`[Upside Down] ${action} response delivery failure: ${responseTransportMetadata(response, text)}; detail=${detail}`);
         const responseError = new Error(`${action} endpoint returned HTTP ${response.status}: ${detail}`);
-        responseError.retryableResponseDeliveryFailure = action === 'Analyze' && (
-            response.status === 404 || (response.status === 200 && detail === 'empty response')
-        );
+        responseError.retryableResponseDeliveryFailure = isRetryableResponseDeliveryFailure(action, response.status);
         throw responseError;
     }
 }
@@ -55,21 +57,30 @@ function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function analyzeWithResponseRetry(payload) {
-    const requestId = payload.analysisRequestId || createAnalysisRequestId();
-    const requestPayload = { ...payload, analysisRequestId: requestId };
+async function requestWithResponseRetry(action, payload, requestIdField) {
+    const requestId = payload[requestIdField] || createAnalysisRequestId();
+    const requestPayload = { ...payload, [requestIdField]: requestId };
+    const label = action === 'analyze' ? 'Analyze' : 'Save';
 
     for (let attempt = 1; attempt <= 2; attempt += 1) {
-        console.log(`[Upside Down] Analyze attempt ${attempt}/2; requestId=${requestId}`);
+        console.log(`[Upside Down] ${label} attempt ${attempt}/2; requestId=${requestId}`);
         try {
-            return await postToAppsScript('analyze', requestPayload);
+            return await postToAppsScript(action, requestPayload);
         } catch (error) {
             const shouldRetry = attempt === 1 && error.retryableResponseDeliveryFailure === true;
-            console.warn(`[Upside Down] Analyze attempt ${attempt} failed; requestId=${requestId}; retry=${shouldRetry}`, error);
+            console.warn(`[Upside Down] ${label} attempt ${attempt} failed; requestId=${requestId}; retry=${shouldRetry}`, error);
             if (!shouldRetry) throw error;
-            await delay(ANALYZE_RESPONSE_RETRY_DELAY_MS);
+            await delay(RESPONSE_RETRY_DELAY_MS);
         }
     }
+}
+
+function analyzeWithResponseRetry(payload) {
+    return requestWithResponseRetry('analyze', payload, 'analysisRequestId');
+}
+
+function saveWithResponseRetry(payload) {
+    return requestWithResponseRetry('save', payload, 'saveRequestId');
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -79,7 +90,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         const operationPromise = action === 'analyze'
             ? analyzeWithResponseRetry(request.payload)
-            : postToAppsScript(action, request.payload);
+            : saveWithResponseRetry(request.payload);
 
         operationPromise
             .then(data => {

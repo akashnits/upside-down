@@ -1,6 +1,6 @@
 const PROPERTIES = PropertiesService.getScriptProperties();
-const ANALYSIS_RESPONSE_CACHE_TTL_SECONDS = 600;
-const MAX_CACHED_ANALYSIS_RESPONSE_CHARS = 80 * 1024;
+const RESPONSE_CACHE_TTL_SECONDS = 600;
+const MAX_CACHED_RESPONSE_CHARS = 80 * 1024;
 
 function jsonOutput(value) {
   return ContentService.createTextOutput(JSON.stringify(value))
@@ -16,51 +16,51 @@ function measureOperation(name, operation) {
   }
 }
 
-function getAnalysisResponseCacheKey(requestId) {
-  return `analysis-response-v1:${requestId}`;
+function getResponseCacheKey(action, requestId) {
+  return `response-v1:${action}:${requestId}`;
 }
 
-function isValidAnalysisRequestId(requestId) {
+function isValidResponseRequestId(requestId) {
   return typeof requestId === "string" && /^[A-Za-z0-9_-]{16,128}$/.test(requestId);
 }
 
-function getCachedAnalysisResponse(requestId) {
-  if (!isValidAnalysisRequestId(requestId)) return null;
+function getCachedResponse(action, requestId) {
+  if (!isValidResponseRequestId(requestId)) return null;
 
   try {
-    const value = CacheService.getScriptCache().get(getAnalysisResponseCacheKey(requestId));
+    const value = CacheService.getScriptCache().get(getResponseCacheKey(action, requestId));
     if (!value) {
-      Logger.log(`[CACHE] Analysis miss: requestId=${requestId}`);
+      Logger.log(`[CACHE] ${action} miss: requestId=${requestId}`);
       return null;
     }
 
     const response = JSON.parse(value);
-    Logger.log(`[CACHE] Analysis hit: requestId=${requestId}; chars=${value.length}`);
+    Logger.log(`[CACHE] ${action} hit: requestId=${requestId}; chars=${value.length}`);
     return response;
   } catch (err) {
-    Logger.log(`[WARN] Analysis cache read failed for requestId=${requestId}: ${err.toString()}`);
+    Logger.log(`[WARN] ${action} cache read failed for requestId=${requestId}: ${err.toString()}`);
     return null;
   }
 }
 
-function cacheAnalysisResponse(requestId, response) {
-  if (!isValidAnalysisRequestId(requestId)) return;
+function cacheResponse(action, requestId, response) {
+  if (!isValidResponseRequestId(requestId)) return;
 
   const value = JSON.stringify(response);
-  if (value.length > MAX_CACHED_ANALYSIS_RESPONSE_CHARS) {
-    Logger.log(`[WARN] Analysis response not cached: requestId=${requestId}; chars=${value.length}`);
+  if (value.length > MAX_CACHED_RESPONSE_CHARS) {
+    Logger.log(`[WARN] ${action} response not cached: requestId=${requestId}; chars=${value.length}`);
     return;
   }
 
   try {
     CacheService.getScriptCache().put(
-      getAnalysisResponseCacheKey(requestId),
+      getResponseCacheKey(action, requestId),
       value,
-      ANALYSIS_RESPONSE_CACHE_TTL_SECONDS,
+      RESPONSE_CACHE_TTL_SECONDS,
     );
-    Logger.log(`[CACHE] Analysis stored: requestId=${requestId}; chars=${value.length}; ttl=${ANALYSIS_RESPONSE_CACHE_TTL_SECONDS}s`);
+    Logger.log(`[CACHE] ${action} stored: requestId=${requestId}; chars=${value.length}; ttl=${RESPONSE_CACHE_TTL_SECONDS}s`);
   } catch (err) {
-    Logger.log(`[WARN] Analysis cache write failed for requestId=${requestId}: ${err.toString()}`);
+    Logger.log(`[WARN] ${action} cache write failed for requestId=${requestId}: ${err.toString()}`);
   }
 }
 
@@ -143,17 +143,23 @@ function doPost(e) {
       const requestId = data.analysisRequestId;
       if (requestId) Logger.log(`[ANALYZE] requestId=${requestId}`);
 
-      const cachedResponse = getCachedAnalysisResponse(requestId);
+      const cachedResponse = getCachedResponse("analysis", requestId);
       if (cachedResponse) return jsonOutput(cachedResponse);
 
       const analysis = measureOperation("Total analysis request", () => performAnalysis(data));
       const response = { success: true, analysis };
-      cacheAnalysisResponse(requestId, response);
+      cacheResponse("analysis", requestId, response);
       return jsonOutput(response);
     }
 
     // --- ACTION: SAVE / PREPARE TAILORING TASK ---
     if (action === "save") {
+      const requestId = data.saveRequestId;
+      if (requestId) Logger.log(`[SAVE] requestId=${requestId}`);
+
+      const cachedResponse = getCachedResponse("save", requestId);
+      if (cachedResponse) return jsonOutput(cachedResponse);
+
       // Persists the immutable task only. The server creates the Drive copy after it receives a patch.
       const analysis = data.analysis;
       data.jobId = resolveJobId(data);
@@ -199,12 +205,14 @@ function doPost(e) {
         Logger.log(`[WARN] Optional Sheet log failed: ${err.toString()}`);
       }
 
-      return jsonOutput({
+      const response = {
         success: true,
         jobId: data.jobId,
         taskToken: issueTaskToken(data.jobId),
         agentEndpoint: getCurrentWebAppUrl(),
-      });
+      };
+      cacheResponse("save", requestId, response);
+      return jsonOutput(response);
     }
 
     // --- AGENT ACTION: CLAIM TASK AND READ CURRENT EDITABLE BASE CONTENT ---
