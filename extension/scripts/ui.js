@@ -63,8 +63,8 @@ function renderAnalysisScan(analysis) {
 
     const confirmation = confirmationOptions.length ? `
         <div style="margin-top:18px; padding:2px 0 2px 13px; border-left:3px solid #d97706;">
-            <div style="font-size:13px; font-weight:700; color:#78350f;">Confirm experience before including</div>
-            <div style="margin-top:3px; font-size:12px; line-height:1.4; color:#92400e;">Only checked terms will be sent to the resume writer.</div>
+            <div style="font-size:13px; font-weight:700; color:#78350f;">Confirm any gap you can support</div>
+            <div style="margin-top:3px; font-size:12px; line-height:1.4; color:#92400e;">Every missing keyword is listed. Only checked terms will be sent to the resume writer.</div>
             <div style="margin-top:10px; display:grid; gap:8px;">
                 ${confirmationOptions.map((option, index) => `
                     <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer; color:#374151; font-size:13px; line-height:1.35;">

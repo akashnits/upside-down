@@ -50,12 +50,11 @@ graph LR
     end
 ```
 
-Everything server-side runs in one Apps Script web app. `doPost` handles mutations and `doGet` serves analysis status. The request `action` selects the operation:
+Everything server-side runs in one Apps Script web app. `doPost` handles each request; the request `action` selects the operation:
 
 | Action | Caller | What it does |
 | --- | --- | --- |
-| `analyze` | Extension | Queues analysis and immediately returns an analysis-job ID. |
-| `analysisStatus` | Extension | Polls the analysis-job ID until the score and tailoring brief are ready. |
+| `analyze` | Extension | Builds the ATS rubric, scores the resume, and returns the analysis. |
 | `save` | Extension | Persists a signed tailoring task to Notion and returns `{ jobId, taskToken, agentEndpoint }`. Creates **no** Drive file. |
 | `claimTailoringTask` | Agent skill | Validates the token, marks the task claimed, and returns the analysis brief plus current Summary/Skills from the base resume. |
 | `applyTailoringPatch` | Agent skill | Copies the base resume into the job folder, applies and verifies the patch, re-scores it, and updates Notion. |
@@ -81,7 +80,6 @@ Modular V8 runtime project managed with `clasp`.
 
 - **`router.js`** — Web-app entry points, action dispatch, and the analysis operation.
 - **`analysis.js`** — Provider selection, rubric extraction, and LLM orchestration.
-- **`analysisJobs.js`** — Ephemeral async analysis queue and time-trigger worker.
 - **`atsEngine.js`** — The scoring brain: weighted coverage, alias matching, stemming, section diagnostics, taxonomy.
 - **`resume.js`** — Base-resume reads, Drive folder/copy operations, and the bounded Summary/Skills document edits.
 - **`tailoring.js`** — HMAC-signed task tokens, claim/apply lifecycle, patch validation, and deterministic re-scoring.
@@ -223,7 +221,7 @@ Finally, publish the web app: **Deploy → Manage deployments → ✏️ → Web
 - **Execute as:** *Me* (`USER_DEPLOYING`)
 - **Who has access:** *Anyone* (`ANYONE_ANONYMOUS`)
 
-Authorize the OAuth scopes when prompted (Drive, Docs, Sheets, external requests, and trigger management). Then run `authorizeAnalysisWorker` once from the Apps Script editor and approve the authorization. This grants the worker permission to schedule the short-lived analysis triggers. Copy the resulting `/exec` **Web App URL**.
+Authorize the OAuth scopes when prompted (Drive, Docs, Sheets, and external requests). Copy the resulting `/exec` **Web App URL**.
 
 > The `ANYONE_ANONYMOUS` access level is what lets the extension and the agent reach the endpoint without a Google session. Requests are authenticated by the HMAC-signed task token, and the URL itself is the shared secret — treat it as one.
 
@@ -271,6 +269,7 @@ The `-i` flag updates the existing deployment so the URL stays stable and the ex
 The tailoring patch logic runs under Node with a mocked `DocumentApp`, so no Google account is needed:
 
 ```bash
+node tests/analysis-brief.test.js
 node tests/resume-patch.test.js
 ```
 
@@ -292,7 +291,6 @@ node tests/resume-patch.test.js
 | Notion `validation_error` / `object_not_found` | The integration isn't connected to the database. Re-share it via ⋯ → Connections. |
 | Extension button never appears | It only injects on `https://www.linkedin.com/jobs/*`. Reload the tab after loading the extension. |
 | `Invalid JSON` in the panel | Usually an un-authorized or un-redeployed web app. Open the `/exec` URL directly and complete the OAuth prompt. |
-| `You do not have permission to call ScriptApp.newTrigger` | Run `authorizeAnalysisWorker` once in the Apps Script editor and approve the trigger-management permission. |
 
 ---
 
@@ -308,7 +306,6 @@ extension/                     Chrome extension (Manifest V3)
 google-apps-script/            Backend, deployed via clasp
 ├── router.js                  Web-app request entry points
 ├── analysis.js                LLM orchestration
-├── analysisJobs.js            Async analysis queue + worker
 ├── atsEngine.js               Deterministic scoring
 ├── resume.js                  Drive + bounded doc edits
 ├── tailoring.js               Signed task lifecycle

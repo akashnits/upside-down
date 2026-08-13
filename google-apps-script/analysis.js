@@ -20,7 +20,8 @@ function getProviderConfig() {
 
 
 
-function callJsonModel(provider, apiKey, prompt, temperature, maxTokens) {
+function callJsonModel(provider, apiKey, prompt, requestOptions) {
+  const requestConfig = requestOptions || {};
   const payload = {
     model: provider.MODELS.ANALYSIS,
     messages: [
@@ -30,12 +31,19 @@ function callJsonModel(provider, apiKey, prompt, temperature, maxTokens) {
       },
       { role: "user", content: prompt },
     ],
-    temperature,
-    max_tokens: maxTokens,
+    temperature: typeof requestConfig.temperature === "number" ? requestConfig.temperature : CONFIG.TEMPERATURE.ANALYSIS,
+    max_tokens: requestConfig.maxTokens,
     response_format: { type: "json_object" },
   };
 
-  const options = {
+  // Terra is a reasoning model. Low effort is sufficient for structured keyword
+  // extraction and evidence review, while the deterministic scorer remains the
+  // source of truth for matches and gaps.
+  if (provider.MODELS.ANALYSIS === "openai/gpt-5.6-terra") {
+    payload.reasoning = { effort: requestConfig.reasoningEffort || "low", exclude: true };
+  }
+
+  const fetchOptions = {
     method: "post",
     contentType: "application/json",
     headers: {
@@ -46,22 +54,17 @@ function callJsonModel(provider, apiKey, prompt, temperature, maxTokens) {
     payload: JSON.stringify(payload),
   };
 
-  let response = UrlFetchApp.fetch(provider.API_URL, options);
-  let data = JSON.parse(response.getContentText());
-  let finishReason = data.choices[0].finish_reason;
+  const startedAt = Date.now();
+  const response = UrlFetchApp.fetch(provider.API_URL, fetchOptions);
+  const elapsedMs = Date.now() - startedAt;
+  const data = JSON.parse(response.getContentText());
+  const finishReason = data.choices && data.choices[0] && data.choices[0].finish_reason;
+  Logger.log(`[PERF] ${provider.MODELS.ANALYSIS}: ${elapsedMs}ms; finish=${finishReason || "unknown"}`);
 
-  if (finishReason === "length") {
-    Logger.log("[WARN] LLM response was truncated. Retrying with higher max_tokens...");
-    payload.max_tokens = Math.max(maxTokens * 2, 16384);
-    options.payload = JSON.stringify(payload);
-    response = UrlFetchApp.fetch(provider.API_URL, options);
-    data = JSON.parse(response.getContentText());
-    finishReason = data.choices[0].finish_reason;
+  if (data.usage) {
+    Logger.log(`[PERF] ${provider.MODELS.ANALYSIS} tokens: prompt=${data.usage.prompt_tokens || 0}, completion=${data.usage.completion_tokens || 0}`);
   }
-
-  if (finishReason === "length") {
-    throw new Error("LLM response was truncated after retry");
-  }
+  if (finishReason === "length") throw new Error("LLM response exceeded its configured output limit");
 
   const content = data.choices && data.choices[0] && data.choices[0].message
     ? data.choices[0].message.content
@@ -164,6 +167,7 @@ Extract a stable, conservative rubric from the job description. Do not use any r
 - nice_to_have: implied role-specific skills only when strongly supported by the description.
 - Keep terms canonical and concise. Do not include generic soft skills or broad job duties.
 - Add common resume spellings or abbreviations as aliases only when they are genuine equivalents.
+- Return only terms relevant to screening this specific role; do not pad any tier.
 
 Output strict JSON:
 {
@@ -172,7 +176,11 @@ Output strict JSON:
   "nice_to_have": [{"term": "GraphQL", "aliases": ["GQL"]}]
 }`;
 
-  const rawRubric = callJsonModel(provider, apiKey, rubricPrompt, 0, 4096);
+  const rawRubric = callJsonModel(provider, apiKey, rubricPrompt, {
+    temperature: 0,
+    maxTokens: 2048,
+    reasoningEffort: "low",
+  });
   return normalizeRubric(rawRubric, computeJobDescriptionHash(jdText));
 }
 
@@ -260,31 +268,18 @@ function buildCompactAnalysisMarkdown(brief) {
   ].join("\n");
 }
 
-function buildConfirmationOptions(highRoiFixes, deterministicBrief) {
-  const missingByKeyword = {};
+function buildConfirmationOptions(deterministicBrief) {
+  const options = [];
   ["required", "preferred", "nice_to_have"].forEach(tier => {
     (deterministicBrief.missingKeywords[tier] || []).forEach(item => {
-      missingByKeyword[item.keyword.toLowerCase()] = { ...item, tier };
-    });
-  });
-
-  const options = [];
-  const seen = new Set();
-  (highRoiFixes || []).forEach(fix => {
-    if (!fix || typeof fix !== "object" || fix.evidenceStatus === "supported") return;
-    (Array.isArray(fix.keywords) ? fix.keywords : []).forEach(keyword => {
-      const match = missingByKeyword[String(keyword).toLowerCase()];
-      if (!match || seen.has(match.keyword.toLowerCase())) return;
-      seen.add(match.keyword.toLowerCase());
       options.push({
-        keyword: match.keyword,
-        tier: match.tier,
-        reason: fix.evidenceSource || "Not evidenced clearly in the current resume",
+        keyword: item.keyword,
+        tier,
+        reason: "Not found in the current resume. Confirm direct experience before including it.",
       });
     });
   });
-
-  return options.slice(0, 6);
+  return options;
 }
 
 function buildScanSummary(modelSummary, deterministicBrief, decision) {
@@ -371,15 +366,15 @@ Rules for this JSON:
 - Use only evidence visible in the resume for supported actions.
 - Use needs_confirmation when a technology or qualification is not clearly evidenced in the resume. Never recommend inventing it.
 - Keep each reason, signal, and action concise enough for a quick scan.
+- Return at most 3 rejection reasons, 5 high-ROI fixes, and 5 strong signals.
+- Keep suggestedSummary under 120 words.
 - Do not recommend repeating an already exact keyword solely for ATS scoring.`;
 
-  const modelAnalysis = callJsonModel(
-    provider,
-    apiKey,
-    insightPrompt,
-    CONFIG.TEMPERATURE.ANALYSIS,
-    8192,
-  );
+  const modelAnalysis = callJsonModel(provider, apiKey, insightPrompt, {
+    temperature: CONFIG.TEMPERATURE.ANALYSIS,
+    maxTokens: 4096,
+    reasoningEffort: "low",
+  });
 
   const expectedGainByKeyword = {};
   ["required", "preferred", "nice_to_have"].forEach(tier => {
@@ -404,7 +399,7 @@ Rules for this JSON:
         };
       })
     : [];
-  const confirmationOptions = buildConfirmationOptions(highRoiFixes, deterministicBrief);
+  const confirmationOptions = buildConfirmationOptions(deterministicBrief);
 
   const tailoringBrief = {
     decision: modelAnalysis.decision || "MAYBE",

@@ -5,16 +5,12 @@ function jsonOutput(value) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-function doGet(e) {
+function measureOperation(name, operation) {
+  const startedAt = Date.now();
   try {
-    const action = e && e.parameter ? e.parameter.action : "";
-    if (action === "analysisStatus") {
-      return jsonOutput(getAnalysisJobStatus(e.parameter.jobId));
-    }
-    return jsonOutput({ success: false, error: "Unsupported GET action" });
-  } catch (err) {
-    Logger.log(`[ERROR] ${err.toString()}`);
-    return jsonOutput({ success: false, error: err.toString() });
+    return operation();
+  } finally {
+    Logger.log(`[PERF] ${name}: ${Date.now() - startedAt}ms`);
   }
 }
 
@@ -28,9 +24,9 @@ function performAnalysis(data) {
   let existingEntry = null;
   if (data.jobId) {
     try {
-      existingEntry = findNotionEntry(data.jobId);
+      existingEntry = measureOperation("Notion lookup", () => findNotionEntry(data.jobId));
       if (existingEntry && existingEntry.resumeUrl) {
-        resumeText = getDocTextFromUrl(existingEntry.resumeUrl);
+        resumeText = measureOperation("Tailored resume read", () => getDocTextFromUrl(existingEntry.resumeUrl));
         resumeSource = "tailored";
       }
     } catch (err) {
@@ -38,7 +34,7 @@ function performAnalysis(data) {
     }
   }
 
-  if (!resumeText) resumeText = getResumeContent();
+  if (!resumeText) resumeText = measureOperation("Base resume read", () => getResumeContent());
   Logger.log(`[INFO] Resume source: ${resumeSource}. Length: ${resumeText.length} chars`);
 
   let rubric = existingEntry && existingEntry.rubric;
@@ -50,10 +46,10 @@ function performAnalysis(data) {
     }
   } else {
     Logger.log("[INFO] Generating ATS rubric from the job description");
-    rubric = extractJobRubric(jobDescription);
+    rubric = measureOperation("Rubric extraction", () => extractJobRubric(jobDescription));
   }
 
-  const analysis = analyzeJob(jobDescription, resumeText, rubric);
+  const analysis = measureOperation("Evidence analysis", () => analyzeJob(jobDescription, resumeText, rubric));
   analysis.currentJdHash = currentJdHash;
   analysis.currentScore = analysis.atsScore;
   analysis.baselineScore = existingEntry && typeof existingEntry.baselineScore === "number"
@@ -70,11 +66,11 @@ function performAnalysis(data) {
 
   if (existingEntry) {
     try {
-      updateNotionPage(existingEntry.pageId, {
+      measureOperation("Notion analysis update", () => updateNotionPage(existingEntry.pageId, {
         analysis,
         systemState: existingEntry.systemState,
         systemStateBlockId: existingEntry.systemStateBlockId,
-      });
+      }));
     } catch (err) {
       Logger.log(`[WARN] Could not update ATS in Notion: ${err.toString()}`);
     }
@@ -94,7 +90,8 @@ function doPost(e) {
 
     // --- ACTION: ANALYZE ---
     if (action === "analyze") {
-      return jsonOutput(enqueueAnalysisJob(data));
+      const analysis = measureOperation("Total analysis request", () => performAnalysis(data));
+      return jsonOutput({ success: true, analysis });
     }
 
     // --- ACTION: SAVE / PREPARE TAILORING TASK ---
@@ -172,8 +169,8 @@ function doPost(e) {
 // createOrGetTailoringFolder, createOrGetTailoringDraft, applyTailoringPatch
 
 
-// --- Analysis functions moved to analysis.js / analysisJobs.js ---
-// getProviderConfig, calculateATSScore, analyzeJob, enqueueAnalysisJob
+// --- Analysis functions moved to analysis.js ---
+// getProviderConfig, calculateATSScore, analyzeJob
 
 // --- Notion functions moved to notion.js ---
 // findNotionEntry, updateNotionPage, saveToNotion, initNotionDatabase
