@@ -3,6 +3,16 @@
 importScripts('config.js');
 const GAS_URL = CONFIG.GAS_URL;
 
+async function readAppsScriptResponse(response, action) {
+    const text = await response.text();
+    try {
+        return JSON.parse(text);
+    } catch (error) {
+        const detail = text.trim().replace(/\s+/g, ' ').slice(0, 200) || 'empty response';
+        throw new Error(`${action} endpoint returned HTTP ${response.status}: ${detail}`);
+    }
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "analyze") {
         console.log("[Upside Down] Sending analyze request...");
@@ -13,18 +23,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify({ ...request.payload, action: "analyze" })
         })
-            .then(res => {
-                console.log("[Upside Down] Response status:", res.status);
-                return res.text();
-            })
-            .then(text => {
-                console.log("[Upside Down] Response text:", text.substring(0, 500));
-                try {
-                    const data = JSON.parse(text);
-                    sendResponse(data);
-                } catch (e) {
-                    sendResponse({ success: false, error: "Invalid JSON: " + text.substring(0, 200) });
-                }
+            .then(res => readAppsScriptResponse(res, "Analyze"))
+            .then(data => {
+                console.log("[Upside Down] Analyze response:", data.success ? "OK" : data.error);
+                sendResponse(data);
             })
             .catch(err => {
                 console.error("[Upside Down] Fetch error:", err);
@@ -43,14 +45,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify({ ...request.payload, action: "save" })
         })
-            .then(res => res.text())
-            .then(text => {
-                console.log("[Upside Down] Save response:", text.substring(0, 200));
-                try {
-                    sendResponse(JSON.parse(text));
-                } catch (e) {
-                    sendResponse({ success: false, error: "Invalid JSON" });
-                }
+            .then(res => readAppsScriptResponse(res, "Save"))
+            .then(data => {
+                console.log("[Upside Down] Save response:", data.success ? "OK" : data.error);
+                sendResponse(data);
             })
             .catch(err => {
                 console.error("[Upside Down] Save error:", err);

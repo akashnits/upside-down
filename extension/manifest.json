@@ -4,7 +4,10 @@
   "version": "1.0",
   "description": "Analyze LinkedIn jobs against your resume",
   "permissions": ["activeTab"],
-  "host_permissions": ["https://script.google.com/*"],
+  "host_permissions": [
+    "https://script.google.com/*",
+    "https://script.googleusercontent.com/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },
