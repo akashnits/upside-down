@@ -40,6 +40,7 @@ vm.runInContext(fs.readFileSync("google-apps-script/analysisJobs.js", "utf8"), c
 const enqueued = context.enqueueAnalysisJob({
   jobDescription: "Build Java services",
   role: "Backend Engineer",
+  analysisRequestId: "request-1",
 });
 assert.deepStrictEqual(JSON.parse(JSON.stringify(enqueued)), {
   success: true,
@@ -49,6 +50,15 @@ assert.deepStrictEqual(JSON.parse(JSON.stringify(enqueued)), {
 });
 assert.strictEqual(triggerCount, 1);
 assert.strictEqual(context.getAnalysisJobStatus("job-1").status, "pending");
+assert.deepStrictEqual(
+  JSON.parse(JSON.stringify(context.enqueueAnalysisJob({
+    jobDescription: "Build Java services",
+    role: "Backend Engineer",
+    analysisRequestId: "request-1",
+  }))),
+  JSON.parse(JSON.stringify(enqueued)),
+);
+assert.strictEqual(triggerCount, 1);
 
 context.runPendingAnalysisJobs();
 assert.deepStrictEqual(
