@@ -2,7 +2,6 @@
 // Import config - update GAS_URL in config.js with your deployed Apps Script URL
 importScripts('config.js');
 const GAS_URL = CONFIG.GAS_URL;
-const ANALYZE_REQUEST_RETRY_DELAYS_MS = [750, 1500, 3000];
 
 async function readAppsScriptResponse(response, action) {
     const text = await response.text();
@@ -24,28 +23,23 @@ async function readAppsScriptResponse(response, action) {
     }
 }
 
-function delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 async function startAnalysis(payload) {
-    let lastError;
-    for (let attempt = 0; attempt <= ANALYZE_REQUEST_RETRY_DELAYS_MS.length; attempt += 1) {
-        try {
-            const response = await fetch(GAS_URL, {
-                method: "POST",
-                redirect: "follow",
-                headers: { "Content-Type": "text/plain;charset=utf-8" },
-                body: JSON.stringify({ ...payload, action: "analyze" })
-            });
-            return await readAppsScriptResponse(response, "Analyze");
-        } catch (error) {
-            lastError = error;
-            if (!error.retryable || attempt === ANALYZE_REQUEST_RETRY_DELAYS_MS.length) throw error;
-            await delay(ANALYZE_REQUEST_RETRY_DELAYS_MS[attempt]);
-        }
-    }
-    throw lastError;
+    // ContentService always redirects POST responses to a temporary Google URL.
+    // That URL intermittently returns 404 to extension fetches, so POST only
+    // dispatches the known job ID. All readable state comes from doGet polling.
+    await fetch(GAS_URL, {
+        method: "POST",
+        redirect: "manual",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ ...payload, action: "analyze" })
+    });
+
+    return {
+        success: true,
+        pending: true,
+        analysisJobId: payload.analysisJobId,
+        pollAfterMs: 1500
+    };
 }
 
 function getAnalysisStatusUrl(jobId) {
@@ -59,8 +53,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "analyze") {
         console.log("[Upside Down] Sending analyze request...");
 
-        const analysisRequestId = crypto.randomUUID();
-        startAnalysis({ ...request.payload, analysisRequestId })
+        const analysisJobId = crypto.randomUUID();
+        startAnalysis({ ...request.payload, analysisJobId })
             .then(data => {
                 console.log("[Upside Down] Analyze response:", data.success ? "OK" : data.error);
                 sendResponse(data);

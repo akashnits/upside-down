@@ -1,7 +1,6 @@
 // analysisJobs.js - Ephemeral asynchronous analysis queue
 
 const ANALYSIS_JOB_CACHE_PREFIX = "analysis-job:";
-const ANALYSIS_REQUEST_CACHE_PREFIX = "analysis-request:";
 const ANALYSIS_JOB_QUEUE_PROPERTY = "ANALYSIS_JOB_QUEUE";
 const ANALYSIS_WORKER_SCHEDULED_AT_PROPERTY = "ANALYSIS_WORKER_SCHEDULED_AT";
 const ANALYSIS_JOB_TTL_SECONDS = 15 * 60;
@@ -21,10 +20,6 @@ function getAnalysisJobCache() {
 
 function getAnalysisJobKey(jobId) {
   return `${ANALYSIS_JOB_CACHE_PREFIX}${jobId}`;
-}
-
-function getAnalysisRequestKey(requestId) {
-  return `${ANALYSIS_REQUEST_CACHE_PREFIX}${requestId}`;
 }
 
 function readAnalysisJob(jobId) {
@@ -78,8 +73,12 @@ function enqueueAnalysisJob(data) {
     throw new Error("A job description is required to start analysis");
   }
 
+  const requestedJobId = String(data.analysisJobId || "").trim();
+  if (requestedJobId && !/^[a-zA-Z0-9-]{1,128}$/.test(requestedJobId)) {
+    throw new Error("Invalid analysis job ID");
+  }
   const job = {
-    id: Utilities.getUuid(),
+    id: requestedJobId || Utilities.getUuid(),
     status: "pending",
     createdAt: new Date().toISOString(),
     payload: {
@@ -93,27 +92,17 @@ function enqueueAnalysisJob(data) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    const requestId = String(data.analysisRequestId || "").trim();
-    if (requestId) {
-      const existingJobId = getAnalysisJobCache().get(getAnalysisRequestKey(requestId));
-      if (existingJobId && readAnalysisJob(existingJobId)) {
-        return {
-          success: true,
-          pending: true,
-          analysisJobId: existingJobId,
-          pollAfterMs: 1500,
-        };
-      }
+    const existingJob = readAnalysisJob(job.id);
+    if (existingJob) {
+      return {
+        success: true,
+        pending: true,
+        analysisJobId: existingJob.id,
+        pollAfterMs: 1500,
+      };
     }
 
     writeAnalysisJob(job);
-    if (requestId) {
-      getAnalysisJobCache().put(
-        getAnalysisRequestKey(requestId),
-        job.id,
-        ANALYSIS_JOB_TTL_SECONDS,
-      );
-    }
     const queue = readAnalysisQueue();
     queue.push(job.id);
     writeAnalysisQueue(queue);
