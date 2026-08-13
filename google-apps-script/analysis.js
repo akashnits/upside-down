@@ -36,11 +36,10 @@ function callJsonModel(provider, apiKey, prompt, requestOptions) {
     response_format: { type: "json_object" },
   };
 
-  // Terra is a reasoning model. Low effort is sufficient for structured keyword
-  // extraction and evidence review, while the deterministic scorer remains the
-  // source of truth for matches and gaps.
+  // Both rubric extraction and evidence review affect tailoring quality. Use
+  // medium effort; deterministic scoring remains the source of truth for gaps.
   if (provider.MODELS.ANALYSIS === "openai/gpt-5.6-terra") {
-    payload.reasoning = { effort: requestConfig.reasoningEffort || "low", exclude: true };
+    payload.reasoning = { effort: requestConfig.reasoningEffort || "medium", exclude: true };
   }
 
   const fetchOptions = {
@@ -178,8 +177,8 @@ Output strict JSON:
 
   const rawRubric = callJsonModel(provider, apiKey, rubricPrompt, {
     temperature: 0,
-    maxTokens: 2048,
-    reasoningEffort: "low",
+    maxTokens: 4096,
+    reasoningEffort: "medium",
   });
   return normalizeRubric(rawRubric, computeJobDescriptionHash(jdText));
 }
@@ -372,8 +371,8 @@ Rules for this JSON:
 
   const modelAnalysis = callJsonModel(provider, apiKey, insightPrompt, {
     temperature: CONFIG.TEMPERATURE.ANALYSIS,
-    maxTokens: 4096,
-    reasoningEffort: "low",
+    maxTokens: 6144,
+    reasoningEffort: "medium",
   });
 
   const expectedGainByKeyword = {};
