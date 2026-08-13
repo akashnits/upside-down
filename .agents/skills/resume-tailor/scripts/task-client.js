@@ -33,14 +33,20 @@ async function run() {
     }),
   });
   const text = await response.text();
-  let payload;
+  let responsePayload;
   try {
-    payload = JSON.parse(text);
+    responsePayload = JSON.parse(text);
   } catch (error) {
+    if (response.status === 404 && new URL(response.url).hostname === "script.googleusercontent.com") {
+      throw new Error(
+        "Apps Script rejected this unauthenticated task request. In Apps Script, open Deploy > Manage deployments > "
+        + "the web app, then set Who has access to Anyone and redeploy."
+      );
+    }
     throw new Error(`Invalid task API response (${response.status}): ${text.slice(0, 200)}`);
   }
-  if (!payload.success) throw new Error(payload.error || "Tailoring task request failed");
-  process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+  if (!responsePayload.success) throw new Error(responsePayload.error || "Tailoring task request failed");
+  process.stdout.write(`${JSON.stringify(responsePayload, null, 2)}\n`);
 }
 
 run().catch(error => {
