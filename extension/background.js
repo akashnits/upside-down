@@ -3,9 +3,6 @@
 importScripts('config.js');
 const GAS_URL = CONFIG.GAS_URL;
 const ANALYZE_RESPONSE_RETRY_DELAY_MS = 250;
-const REDIRECT_LOCATION_TIMEOUT_MS = 10000;
-const TRANSPORT_REQUEST_QUERY_PARAM = 'udTransportRequestId';
-const pendingRedirects = new Map();
 
 function createAnalysisRequestId() {
     if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -13,77 +10,6 @@ function createAnalysisRequestId() {
     globalThis.crypto.getRandomValues(bytes);
     return Array.from(bytes, value => value.toString(16).padStart(8, '0')).join('');
 }
-
-function createTransportRequestId() {
-    return createAnalysisRequestId();
-}
-
-function getRedirectLocation(responseHeaders) {
-    const location = (responseHeaders || []).find(header => header.name?.toLowerCase() === 'location');
-    return location?.value || null;
-}
-
-function isTrustedAppsScriptContentUrl(location) {
-    try {
-        const url = new URL(location);
-        return url.protocol === 'https:' && url.host === 'script.googleusercontent.com';
-    } catch (_) {
-        return false;
-    }
-}
-
-function waitForAppsScriptRedirect(transportRequestId) {
-    return new Promise((resolve, reject) => {
-        const timeoutId = setTimeout(() => {
-            pendingRedirects.delete(transportRequestId);
-            reject(new Error(`Apps Script redirect was not observed within ${REDIRECT_LOCATION_TIMEOUT_MS}ms`));
-        }, REDIRECT_LOCATION_TIMEOUT_MS);
-        pendingRedirects.set(transportRequestId, { resolve, reject, timeoutId });
-    });
-}
-
-function clearPendingAppsScriptRedirect(transportRequestId) {
-    const pending = pendingRedirects.get(transportRequestId);
-    if (pending) clearTimeout(pending.timeoutId);
-    pendingRedirects.delete(transportRequestId);
-}
-
-function observeAppsScriptRedirect(details) {
-    let requestUrl;
-    try {
-        requestUrl = new URL(details.url);
-    } catch (_) {
-        return;
-    }
-
-    const transportRequestId = requestUrl.searchParams.get(TRANSPORT_REQUEST_QUERY_PARAM);
-    if (!transportRequestId) return;
-
-    const pending = pendingRedirects.get(transportRequestId);
-    if (!pending) return;
-
-    const location = getRedirectLocation(details.responseHeaders);
-    if (!location) {
-        clearPendingAppsScriptRedirect(transportRequestId);
-        pending.reject(new Error(`Apps Script redirect was missing a Location header; requestId=${transportRequestId}`));
-        return;
-    }
-    if (!isTrustedAppsScriptContentUrl(location)) {
-        clearPendingAppsScriptRedirect(transportRequestId);
-        pending.reject(new Error(`Apps Script redirect targeted an unexpected host; requestId=${transportRequestId}`));
-        return;
-    }
-
-    clearPendingAppsScriptRedirect(transportRequestId);
-    console.log(`[Upside Down] Captured Apps Script redirect; transportRequestId=${transportRequestId}`);
-    pending.resolve(location);
-}
-
-chrome.webRequest.onHeadersReceived.addListener(
-    observeAppsScriptRedirect,
-    { urls: ['https://script.google.com/macros/s/*/exec*'] },
-    ['responseHeaders'],
-);
 
 function responseTransportMetadata(response, text) {
     let host = 'unknown';
@@ -116,33 +42,13 @@ async function readAppsScriptResponse(response, action) {
     }
 }
 
-async function postToAppsScript(action, payload) {
-    const transportRequestId = createTransportRequestId();
-    const dispatchUrl = new URL(GAS_URL);
-    dispatchUrl.searchParams.set(TRANSPORT_REQUEST_QUERY_PARAM, transportRequestId);
-    const redirectLocation = waitForAppsScriptRedirect(transportRequestId);
-
-    console.log(`[Upside Down] Dispatching ${action}; transportRequestId=${transportRequestId}`);
-    try {
-        const initialResponse = await fetch(dispatchUrl.toString(), {
-            method: 'POST',
-            redirect: 'manual',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ ...payload, action })
-        });
-        console.log(`[Upside Down] Apps Script dispatch response: type=${initialResponse.type}; status=${initialResponse.status}; transportRequestId=${transportRequestId}`);
-
-        const location = await redirectLocation;
-        console.log(`[Upside Down] Reading Apps Script response; transportRequestId=${transportRequestId}`);
-        const response = await fetch(location, {
-            method: 'GET',
-            redirect: 'error',
-            credentials: 'omit',
-        });
-        return await readAppsScriptResponse(response, action === 'analyze' ? 'Analyze' : 'Save');
-    } finally {
-        clearPendingAppsScriptRedirect(transportRequestId);
-    }
+function postToAppsScript(action, payload) {
+    return fetch(GAS_URL, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ ...payload, action })
+    }).then(response => readAppsScriptResponse(response, action === 'analyze' ? 'Analyze' : 'Save'));
 }
 
 function delay(ms) {
