@@ -3,6 +3,7 @@ const fs = require("fs");
 const vm = require("vm");
 
 const requests = [];
+let messageListener;
 const responses = [
   { ok: false, status: 404, redirected: true, url: "https://script.googleusercontent.com/macros/temporary", text: async () => "Not found" },
   { ok: true, status: 200, redirected: true, url: "https://script.googleusercontent.com/macros/temporary", text: async () => JSON.stringify({ success: true, analysis: { atsScore: 42 } }) },
@@ -21,7 +22,7 @@ const context = {
     requests.push(JSON.parse(options.body));
     return responses.shift();
   },
-  chrome: { runtime: { onMessage: { addListener() {} } } },
+  chrome: { runtime: { onMessage: { addListener: listener => { messageListener = listener; } } } },
 };
 
 vm.createContext(context);
@@ -34,6 +35,23 @@ vm.runInContext(fs.readFileSync("extension/background.js", "utf8"), context);
   assert.strictEqual(requests.length, 2);
   assert.strictEqual(requests[0].analysisRequestId, "request-id-0123456789");
   assert.strictEqual(requests[1].analysisRequestId, requests[0].analysisRequestId);
+
+  responses.push({ ok: true, status: 200, redirected: true, url: "https://script.googleusercontent.com/macros/temporary", text: async () => JSON.stringify({ success: true, analysis: { atsScore: 84 } }) });
+  await new Promise((resolve, reject) => {
+    const keepsChannelOpen = messageListener(
+      { action: "analyze", payload: { jobId: "4450120692" } },
+      null,
+      response => {
+        try {
+          assert.deepStrictEqual(JSON.parse(JSON.stringify(response)), { success: true, analysis: { atsScore: 84 } });
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      },
+    );
+    assert.strictEqual(keepsChannelOpen, true);
+  });
 
   console.log("analysis response retry tests passed");
 })().catch(error => {

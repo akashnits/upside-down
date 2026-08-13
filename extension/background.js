@@ -77,11 +77,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const action = request.action;
         console.log(`[Upside Down] Sending ${action} request...`);
 
-        const request = action === 'analyze'
+        const operationPromise = action === 'analyze'
             ? analyzeWithResponseRetry(request.payload)
             : postToAppsScript(action, request.payload);
 
-        request
+        operationPromise
             .then(data => {
                 console.log(`[Upside Down] ${action} response:`, data.success ? 'OK' : data.error);
                 sendResponse(data);
