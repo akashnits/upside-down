@@ -1,4 +1,6 @@
 const PROPERTIES = PropertiesService.getScriptProperties();
+const ANALYSIS_RESPONSE_CACHE_TTL_SECONDS = 600;
+const MAX_CACHED_ANALYSIS_RESPONSE_CHARS = 80 * 1024;
 
 function jsonOutput(value) {
   return ContentService.createTextOutput(JSON.stringify(value))
@@ -11,6 +13,54 @@ function measureOperation(name, operation) {
     return operation();
   } finally {
     Logger.log(`[PERF] ${name}: ${Date.now() - startedAt}ms`);
+  }
+}
+
+function getAnalysisResponseCacheKey(requestId) {
+  return `analysis-response-v1:${requestId}`;
+}
+
+function isValidAnalysisRequestId(requestId) {
+  return typeof requestId === "string" && /^[A-Za-z0-9_-]{16,128}$/.test(requestId);
+}
+
+function getCachedAnalysisResponse(requestId) {
+  if (!isValidAnalysisRequestId(requestId)) return null;
+
+  try {
+    const value = CacheService.getScriptCache().get(getAnalysisResponseCacheKey(requestId));
+    if (!value) {
+      Logger.log(`[CACHE] Analysis miss: requestId=${requestId}`);
+      return null;
+    }
+
+    const response = JSON.parse(value);
+    Logger.log(`[CACHE] Analysis hit: requestId=${requestId}; chars=${value.length}`);
+    return response;
+  } catch (err) {
+    Logger.log(`[WARN] Analysis cache read failed for requestId=${requestId}: ${err.toString()}`);
+    return null;
+  }
+}
+
+function cacheAnalysisResponse(requestId, response) {
+  if (!isValidAnalysisRequestId(requestId)) return;
+
+  const value = JSON.stringify(response);
+  if (value.length > MAX_CACHED_ANALYSIS_RESPONSE_CHARS) {
+    Logger.log(`[WARN] Analysis response not cached: requestId=${requestId}; chars=${value.length}`);
+    return;
+  }
+
+  try {
+    CacheService.getScriptCache().put(
+      getAnalysisResponseCacheKey(requestId),
+      value,
+      ANALYSIS_RESPONSE_CACHE_TTL_SECONDS,
+    );
+    Logger.log(`[CACHE] Analysis stored: requestId=${requestId}; chars=${value.length}; ttl=${ANALYSIS_RESPONSE_CACHE_TTL_SECONDS}s`);
+  } catch (err) {
+    Logger.log(`[WARN] Analysis cache write failed for requestId=${requestId}: ${err.toString()}`);
   }
 }
 
@@ -90,8 +140,16 @@ function doPost(e) {
 
     // --- ACTION: ANALYZE ---
     if (action === "analyze") {
+      const requestId = data.analysisRequestId;
+      if (requestId) Logger.log(`[ANALYZE] requestId=${requestId}`);
+
+      const cachedResponse = getCachedAnalysisResponse(requestId);
+      if (cachedResponse) return jsonOutput(cachedResponse);
+
       const analysis = measureOperation("Total analysis request", () => performAnalysis(data));
-      return jsonOutput({ success: true, analysis });
+      const response = { success: true, analysis };
+      cacheAnalysisResponse(requestId, response);
+      return jsonOutput(response);
     }
 
     // --- ACTION: SAVE / PREPARE TAILORING TASK ---
