@@ -38,7 +38,7 @@ function callJsonModel(provider, apiKey, prompt, requestOptions) {
 
   // Both rubric extraction and evidence review affect tailoring quality. Use
   // medium effort; deterministic scoring remains the source of truth for gaps.
-  if (provider.MODELS.ANALYSIS === "openai/gpt-5.6-terra") {
+  if (provider.MODELS.ANALYSIS === "openai/gpt-5.6-terra" || provider.MODELS.ANALYSIS === "openai/gpt-5.6-luna") {
     payload.reasoning = { effort: requestConfig.reasoningEffort || "medium", exclude: true };
   }
 

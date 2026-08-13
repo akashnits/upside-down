@@ -180,7 +180,7 @@ The first `save` provisions these properties: `Name`, `Company`, `Role`, `Decisi
 
 ### 4. Get an OpenRouter key
 
-Create a key at <https://openrouter.ai/keys>. The default model is set in `google-apps-script/config.js` (`PROVIDER: "OPENAI"` → `openai/gpt-5.6-terra`); switch providers by editing that file or by setting a `PROVIDER` Script Property to `OPENAI`, `GEMINI`, or `NVIDIA`.
+Create a key at <https://openrouter.ai/keys>. The default model is set in `google-apps-script/config.js` (`PROVIDER: "OPENAI"` → `openai/gpt-5.6-luna`); switch providers by editing that file or by setting a `PROVIDER` Script Property to `OPENAI`, `GEMINI`, or `NVIDIA`.
 
 ### 5. Deploy the Apps Script backend
 
@@ -271,7 +271,6 @@ The tailoring patch logic runs under Node with a mocked `DocumentApp`, so no Goo
 ```bash
 node tests/analysis-brief.test.js
 node tests/resume-patch.test.js
-node tests/transport-probe.test.js
 ```
 
 ---

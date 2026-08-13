@@ -292,39 +292,13 @@ function createPanel() {
             if (window.udSaveInterval) clearInterval(window.udSaveInterval);
 
             document.getElementById('ud-status').style.display = 'flex';
-            const isEmptyAnalyzeResponse = String(msg).includes('Analyze endpoint returned HTTP 200: empty response');
             document.getElementById('ud-status').innerHTML = `
                 <div style="text-align:center; padding:20px; color:#ef4444;">
                     <div style="font-size:40px; margin-bottom:10px;">❌</div>
                     <div>Error: ${msg}</div>
-                    ${isEmptyAnalyzeResponse ? '<button id="ud-run-transport-probe" style="margin-top:16px; border:1px solid #0a66c2; border-radius:6px; background:#fff; color:#0a66c2; padding:8px 12px; cursor:pointer; font-size:13px; font-weight:600;">Run transport test</button><div id="ud-transport-probe-result" style="margin-top:12px; color:#374151; font-size:12px; line-height:1.5;"></div>' : ''}
                 </div>
             `;
             document.getElementById('ud-result').style.display = 'none';
-
-            const probeButton = document.getElementById('ud-run-transport-probe');
-            if (!probeButton) return;
-
-            probeButton.onclick = () => {
-                const result = document.getElementById('ud-transport-probe-result');
-                probeButton.disabled = true;
-                probeButton.textContent = 'Testing 0s, 10s, 20s, 30s...';
-                result.textContent = 'This takes about 60 seconds and does not call the AI or change any data.';
-
-                chrome.runtime.sendMessage({ action: 'transportProbe' }, response => {
-                    if (!response?.success) {
-                        result.textContent = `Test failed: ${response?.error || 'Unknown error'}`;
-                        probeButton.disabled = false;
-                        probeButton.textContent = 'Run transport test';
-                        return;
-                    }
-                    result.innerHTML = response.results.map(item => {
-                        const elapsed = `${(item.roundTripMs / 1000).toFixed(1)}s`;
-                        return `<div>${item.delayMs / 1000}s delay: ${item.ok ? `received JSON in ${elapsed}` : `FAILED after ${elapsed} - ${escapeHtml(item.error)}`}</div>`;
-                    }).join('');
-                    probeButton.style.display = 'none';
-                });
-            };
         },
 
         close: closePanel
