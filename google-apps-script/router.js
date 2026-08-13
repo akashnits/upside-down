@@ -207,6 +207,8 @@ function doPost(e) {
 
       const response = {
         success: true,
+        company: data.company || "Unknown",
+        role: data.role || "Unknown",
         jobId: data.jobId,
         taskToken: issueTaskToken(data.jobId),
         agentEndpoint: getCurrentWebAppUrl(),

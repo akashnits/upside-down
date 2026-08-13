@@ -272,6 +272,7 @@ The tailoring patch logic runs under Node with a mocked `DocumentApp`, so no Goo
 node tests/analysis-brief.test.js
 node tests/analysis-response-cache.test.js
 node tests/analysis-response-retry.test.js
+node tests/cowork-prompt.test.js
 node tests/resume-patch.test.js
 node tests/save-response-idempotency.test.js
 ```

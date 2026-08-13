@@ -54,6 +54,8 @@ const retryResponse = post(request);
 
 assert.deepStrictEqual(firstResponse, {
   success: true,
+  company: "Example",
+  role: "Engineer",
   jobId: "4450120692",
   taskToken: "task-token-1",
   agentEndpoint: "https://script.google.com/macros/s/example/exec",

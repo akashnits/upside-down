@@ -7,6 +7,8 @@
  */
 function buildCoworkPrompt(taskReference) {
     const task = {
+        company: taskReference.company || 'Unknown',
+        role: taskReference.role || 'Unknown',
         endpoint: taskReference.agentEndpoint,
         jobId: taskReference.jobId,
         taskToken: taskReference.taskToken,
