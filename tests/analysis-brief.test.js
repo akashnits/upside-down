@@ -22,3 +22,18 @@ assert.deepStrictEqual(JSON.parse(JSON.stringify(options)), [
 ]);
 
 console.log("analysis brief tests passed");
+
+const literalization = context.buildLiteralizationOptions({
+  recognizedEvidence: [{
+    keyword: "Amazon Web Services",
+    matchedTerm: "aws",
+    method: "synonym",
+    expectedGain: 4,
+  }],
+});
+assert.deepStrictEqual(JSON.parse(JSON.stringify(literalization)), [{
+  keyword: "Amazon Web Services",
+  matchedTerm: "aws",
+  method: "synonym",
+  expectedGain: 4,
+}]);

@@ -19,9 +19,16 @@ const html = context.renderAnalysisScan({
       keyword: "Microsoft Azure",
       tier: "required",
     }],
+    literalizationOptions: [{
+      keyword: "Amazon Web Services",
+      matchedTerm: "aws",
+      expectedGain: 4,
+    }],
   },
 });
 
 assert.ok(html.includes("Score lift: +5"));
+assert.ok(html.includes("ud-literalize-keyword"));
+assert.ok(html.includes("Amazon Web Services"));
 
 console.log("UI score-lift test passed");

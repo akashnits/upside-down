@@ -237,6 +237,7 @@ function calculateATSScore(keywords, resumeText) {
   const strictMissing = [];
   const keywordFrequency = {};
   const matchMethod = {};
+  const matchedTerm = {};
   const sectionHits = {};
 
   // Normalize input: accept both [{term, weight}] and ["keyword"] formats
@@ -310,6 +311,7 @@ function calculateATSScore(keywords, resumeText) {
     // 1. Exact word-boundary match on normalized text
     if (wordBoundaryMatch(kwNormalized, normalizedResume)) {
       method = "exact";
+      matchedTerm[keyword] = kwNormalized;
       const counts = countKeywordInSections(kwNormalized, sectionMap);
       tf = counts.weightedCount;
       hitSects = counts.sections;
@@ -329,6 +331,7 @@ function calculateATSScore(keywords, resumeText) {
         const synNorm = normalizeText(syn);
         if (wordBoundaryMatch(synNorm, normalizedResume)) {
           method = "synonym";
+          matchedTerm[keyword] = synNorm;
           const counts = countKeywordInSections(synNorm, sectionMap);
           tf = counts.weightedCount;
           hitSects = counts.sections;
@@ -342,12 +345,14 @@ function calculateATSScore(keywords, resumeText) {
       const kwStem = simpleStem(kwNormalized);
       if (kwStem.length >= 3 && stemIndex[kwStem]) {
         method = "stem";
+        matchedTerm[keyword] = kwNormalized;
         tf = stemIndex[kwStem]; // Raw stem count (no section weighting for stems)
         hitSects = ["Unknown"];
       } else {
         const counts = countStemmedPhraseInSections(kwNormalized, sectionMap);
         if (counts.rawCount) {
           method = "stem";
+          matchedTerm[keyword] = kwNormalized;
           tf = counts.weightedCount;
           hitSects = counts.sections;
         }
@@ -435,6 +440,7 @@ function calculateATSScore(keywords, resumeText) {
     strictMissing,
     keywordFrequency,
     matchMethod,
+    matchedTerm,
     sectionHits,
     _methodCounts: methodCounts,
   };

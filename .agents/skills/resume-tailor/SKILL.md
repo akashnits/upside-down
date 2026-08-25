@@ -58,7 +58,10 @@ Only stop and report the error if the permission-backed retry also fails.
 
 4. Preserve every strong match. Add a `needs_confirmation` keyword only when it
    is in `analysisBrief.userSelections.confirmedKeywords`. Do not add excluded,
-   unconfirmed, or unsupported experience.
+   unconfirmed, or unsupported experience. For each term in
+   `analysisBrief.userSelections.literalizeKeywords`, preserve the existing
+   evidence but use the selected JD wording where it truthfully describes that
+   same evidence; this is a wording change, not a new skill claim.
 
 5. Submit the patch. Do not update Notion or calculate the final ATS score yourself.
    The backend makes a native copy of the canonical Base Resume in:

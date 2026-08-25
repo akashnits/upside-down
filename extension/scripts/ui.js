@@ -20,6 +20,7 @@ function renderAnalysisScan(analysis) {
     const weakMatches = brief.weakMatches || [];
     const recognizedEvidence = brief.recognizedEvidence || [];
     const confirmationOptions = brief.confirmationOptions || [];
+    const literalizationOptions = brief.literalizationOptions || [];
     const expectedGainByKeyword = Object.values(brief.missingKeywords || {}).flat()
         .reduce((gains, item) => ({ ...gains, [String(item.keyword || '').toLowerCase()]: item.expectedGain }), {});
     const priorityGaps = [...requiredGaps, ...preferredGaps, ...weakMatches].slice(0, 5);
@@ -85,6 +86,19 @@ function renderAnalysisScan(analysis) {
             </div>
         </div>` : '';
 
+    const literalization = literalizationOptions.length ? `
+        <div style="margin-top:18px; padding:2px 0 2px 13px; border-left:3px solid #7c3aed;">
+            <div style="font-size:13px; font-weight:700; color:#5b21b6;">Use recognized evidence with JD wording</div>
+            <div style="margin-top:3px; font-size:12px; line-height:1.4; color:#6d28d9;">These are existing capabilities. Selecting one asks the writer to rephrase the evidence, not add a new skill.</div>
+            <div style="margin-top:10px; display:grid; gap:8px;">
+                ${literalizationOptions.map(option => `
+                    <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer; color:#374151; font-size:13px; line-height:1.35;">
+                        <input class="ud-literalize-keyword" type="checkbox" value="${escapeHtml(option.keyword)}" style="margin:2px 0 0; accent-color:#7c3aed; width:15px; height:15px; flex:0 0 auto;">
+                        <span><strong>${escapeHtml(option.keyword)}</strong><span style="color:#6d28d9;"> ← ${escapeHtml(option.matchedTerm || 'recognized equivalent')}</span><br><span style="font-size:12px; color:#6b7280;">Score lift: +${escapeHtml(option.expectedGain)}</span></span>
+                    </label>`).join('')}
+            </div>
+        </div>` : '';
+
     return `
         <div style="background:#fff; border:1px solid #dbe3ef; border-radius:8px; padding:18px; margin-bottom:16px;">
             <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
@@ -96,13 +110,14 @@ function renderAnalysisScan(analysis) {
             <div style="display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:20px; margin-top:20px;">
                 <div>
                     <div style="font-size:11px; font-weight:700; letter-spacing:0.08em; color:#6b7280; margin-bottom:7px;">TOP GAPS</div>
-                    ${gaps}
+            ${gaps}
                 </div>
                 <div>
                     <div style="font-size:11px; font-weight:700; letter-spacing:0.08em; color:#6b7280; margin-bottom:7px;">BEST EDITS</div>
                     ${fixes}
                 </div>
             </div>
+            ${literalization}
             ${confirmation}
         </div>`;
 }
@@ -211,14 +226,18 @@ function createPanel() {
 
             document.getElementById('ud-save').onclick = () => {
                 const confirmationInputs = Array.from(document.querySelectorAll('.ud-confirm-keyword'));
+                const literalizationInputs = Array.from(document.querySelectorAll('.ud-literalize-keyword'));
                 const confirmedKeywords = confirmationInputs
                     .filter(input => input.checked)
                     .map(input => input.value);
                 const excludedKeywords = confirmationInputs
                     .filter(input => !input.checked)
                     .map(input => input.value);
+                const literalizeKeywords = literalizationInputs
+                    .filter(input => input.checked)
+                    .map(input => input.value);
 
-                onSave({ confirmedKeywords, excludedKeywords });
+                onSave({ confirmedKeywords, excludedKeywords, literalizeKeywords });
             };
             document.getElementById('ud-discard').onclick = closePanel;
         },

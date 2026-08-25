@@ -323,9 +323,11 @@ function buildDeterministicBrief(ats, rubric, resumeText) {
       } else if (method) {
         brief.recognizedEvidence.push({
           keyword: item.term,
+          matchedTerm: ats.matchedTerm ? ats.matchedTerm[item.term] : null,
           method,
           frequency,
           sections,
+          expectedGain: totalWeight ? roundScore((weight / totalWeight) * 100) : 0,
         });
       }
     });
@@ -370,6 +372,15 @@ function buildConfirmationOptions(deterministicBrief) {
     });
   });
   return options;
+}
+
+function buildLiteralizationOptions(deterministicBrief) {
+  return (deterministicBrief.recognizedEvidence || []).map(item => ({
+    keyword: item.keyword,
+    matchedTerm: item.matchedTerm,
+    method: item.method,
+    expectedGain: item.expectedGain,
+  }));
 }
 
 function buildScanSummary(modelSummary, deterministicBrief, decision) {
@@ -491,6 +502,7 @@ Rules for this JSON:
       })
     : [];
   const confirmationOptions = buildConfirmationOptions(deterministicBrief);
+  const literalizationOptions = buildLiteralizationOptions(deterministicBrief);
 
   const tailoringBrief = {
     decision: modelAnalysis.decision || "MAYBE",
@@ -507,9 +519,11 @@ Rules for this JSON:
     strongSignals: Array.isArray(modelAnalysis.strongSignals) ? modelAnalysis.strongSignals.slice(0, 5) : [],
     strongMatches: deterministicBrief.strongMatches,
     weakMatches: deterministicBrief.weakMatches,
+    recognizedEvidence: deterministicBrief.recognizedEvidence,
     missingKeywords: deterministicBrief.missingKeywords,
     deprioritized: deterministicBrief.deprioritized,
     confirmationOptions,
+    literalizationOptions,
   };
 
   const allKeywords = weightedKeywords.map(k => k.term);
