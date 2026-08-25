@@ -8,17 +8,17 @@ vm.runInContext(fs.readFileSync("google-apps-script/analysis.js", "utf8"), conte
 
 const options = context.buildConfirmationOptions({
   missingKeywords: {
-    required: [{ keyword: "Kafka" }, { keyword: "Java" }],
-    preferred: [{ keyword: "Kubernetes" }],
-    nice_to_have: [{ keyword: "GraphQL" }],
+    required: [{ keyword: "Kafka", expectedGain: 5 }, { keyword: "Java", expectedGain: 4 }],
+    preferred: [{ keyword: "Kubernetes", expectedGain: 2.5 }],
+    nice_to_have: [{ keyword: "GraphQL", expectedGain: 1 }],
   },
 });
 
 assert.deepStrictEqual(JSON.parse(JSON.stringify(options)), [
-  { keyword: "Kafka", tier: "required", reason: "Not found in the current resume. Confirm direct experience before including it." },
-  { keyword: "Java", tier: "required", reason: "Not found in the current resume. Confirm direct experience before including it." },
-  { keyword: "Kubernetes", tier: "preferred", reason: "Not found in the current resume. Confirm direct experience before including it." },
-  { keyword: "GraphQL", tier: "nice_to_have", reason: "Not found in the current resume. Confirm direct experience before including it." },
+  { keyword: "Kafka", tier: "required", expectedGain: 5 },
+  { keyword: "Java", tier: "required", expectedGain: 4 },
+  { keyword: "Kubernetes", tier: "preferred", expectedGain: 2.5 },
+  { keyword: "GraphQL", tier: "nice_to_have", expectedGain: 1 },
 ]);
 
 console.log("analysis brief tests passed");

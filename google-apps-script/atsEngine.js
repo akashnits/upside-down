@@ -28,7 +28,10 @@ const SECTION_WEIGHTS = {
   Other: 0.7,
 };
 
-// --- Synonym taxonomy (mini Textkernel-style skill mapping) ---
+// --- Strict alias taxonomy ---
+// These are alternate spellings or unambiguous abbreviations of the same skill.
+// Related technologies or capabilities must not appear here: they are useful
+// coaching signals but overstate ATS coverage when treated as equivalents.
 const SYNONYM_TAXONOMY = {
   javascript: ["js", "javascript", "ecmascript"],
   typescript: ["ts", "typescript"],
@@ -43,28 +46,24 @@ const SYNONYM_TAXONOMY = {
   postgresql: ["postgres", "postgresql", "psql"],
   mongodb: ["mongo", "mongodb"],
   "react.js": ["react", "reactjs", "react.js"],
-  "node.js": ["node", "nodejs", "node.js"],
+  "node.js": ["nodejs", "node.js"],
   "vue.js": ["vue", "vuejs", "vue.js"],
   angular: ["angular", "angularjs"],
-  "next.js": ["next", "nextjs", "next.js"],
+  "next.js": ["nextjs", "next.js"],
   graphql: ["graphql", "gql"],
-  "rest api": ["rest", "restful", "rest api", "restful api"],
-  "ci/cd": ["ci/cd", "cicd", "continuous integration", "continuous deployment"],
-  docker: ["docker", "containerization"],
-  terraform: ["terraform", "iac", "infrastructure as code"],
-  agile: ["agile", "scrum", "kanban"],
+  "rest api": ["rest api", "rest apis", "restful api", "restful apis"],
+  "ci/cd": ["ci/cd", "cicd", "continuous integration and continuous deployment", "continuous integration continuous deployment"],
   "user experience": ["ux", "user experience"],
   "user interface": ["ui", "user interface"],
   "software development": ["software engineering", "software development", "swe"],
   bachelor: ["bachelor", "bachelors", "bachelor's", "bs", "b.s.", "bsc"],
   master: ["master", "masters", "master's", "ms", "m.s.", "msc"],
-  "system design": ["system design", "systems design", "architecture", "architected", "designing resilient"],
-  microservices: ["microservices", "micro-services", "distributed systems", "distributed platforms"],
-  "message queuing": ["message queuing", "message queues", "pub/sub", "event-driven", "kafka", "rabbitmq", "kinesis"],
-  "generative ai": ["generative ai", "genai", "llm", "large language models"],
-  "technical leadership": ["technical leadership", "tech lead", "technical strategy", "driving strategy", "mentorship", "mentoring"],
-  "cloud platforms": ["cloud platforms", "public cloud", "cloud computing", "aws", "gcp", "azure"],
 };
+
+// A phrase is not evidenced merely because its individual words appear in
+// unrelated bullets. Keep this disabled until a proximity-aware matcher is
+// implemented and validated by the benchmark.
+const ENABLE_NGRAM_MATCHING = false;
 
 /**
  * Normalize text the way ATS PDF/DOCX parsers flatten formatting artifacts.
@@ -193,6 +192,38 @@ function countKeywordInSections(keyword, sectionMap) {
 }
 
 /**
+ * Match a multi-word phrase when its words occur consecutively and only differ
+ * by simple inflection (for example, "mentored junior engineers" versus
+ * "mentoring junior engineers"). Unlike n-gram decomposition, this cannot
+ * join unrelated words from different parts of a resume.
+ */
+function countStemmedPhraseInSections(keyword, sectionMap) {
+  const phraseStems = normalizeText(keyword)
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(simpleStem);
+  if (phraseStems.length < 2) return { weightedCount: 0, rawCount: 0, sections: [] };
+
+  let weightedCount = 0;
+  let rawCount = 0;
+  const hitSections = [];
+  for (const [sectionName, sectionText] of Object.entries(sectionMap)) {
+    const tokens = normalizeText(sectionText).split(/\s+/).filter(Boolean);
+    let count = 0;
+    for (let index = 0; index <= tokens.length - phraseStems.length; index += 1) {
+      const matches = phraseStems.every((stem, offset) => simpleStem(tokens[index + offset]) === stem);
+      if (matches) count += 1;
+    }
+    if (count) {
+      rawCount += count;
+      weightedCount += count * (SECTION_WEIGHTS[sectionName] || 0.7);
+      hitSections.push(sectionName);
+    }
+  }
+  return { weightedCount, rawCount, sections: hitSections };
+}
+
+/**
  * Calculate ATS score by matching a fixed rubric against a resume.
  * The headline score is weighted coverage. Match method and section placement
  * are returned separately so resume length cannot hide coverage gains.
@@ -310,11 +341,19 @@ function calculateATSScore(keywords, resumeText) {
         method = "stem";
         tf = stemIndex[kwStem]; // Raw stem count (no section weighting for stems)
         hitSects = ["Unknown"];
+      } else {
+        const counts = countStemmedPhraseInSections(kwNormalized, sectionMap);
+        if (counts.rawCount) {
+          method = "stem";
+          tf = counts.weightedCount;
+          hitSects = counts.sections;
+        }
       }
     }
 
-    // 4. N-gram decomposition (multi-word keywords only)
-    if (!method) {
+    // 4. N-gram decomposition (multi-word keywords only). Disabled for ATS
+    // credit because the current implementation cannot require word proximity.
+    if (!method && ENABLE_NGRAM_MATCHING) {
       const words = kwNormalized.split(/\s+/).filter((w) => w.length >= 2);
       if (words.length > 1) {
         const allWordsPresent = words.every((w) => wordBoundaryMatch(w, normalizedResume));

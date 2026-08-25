@@ -110,19 +110,37 @@ function normalizeRubric(rawRubric, jdHash) {
       const term = typeof value.term === "string" ? value.term.trim() : "";
       if (!term) return;
 
-      const key = normalizeText(term);
+      const type = ["keyword", "alternative", "eligibility"].includes(value.type)
+        ? value.type
+        : "keyword";
+      const alternatives = type === "alternative" && Array.isArray(value.alternatives)
+        ? [...new Set(value.alternatives
+          .filter(option => typeof option === "string" && option.trim())
+          .map(option => option.trim()))]
+        : [];
+      const criterion = type === "eligibility" && value.criterion && typeof value.criterion === "object"
+        ? value.criterion
+        : null;
+
+      // Alternatives must contain multiple genuine options. Eligibility has a
+      // small explicit schema so arbitrary LLM output cannot affect scoring.
+      if (type === "alternative" && alternatives.length < 2) return;
+      if (type === "eligibility" && !["min_years_experience", "technical_degree"].includes(criterion && criterion.kind)) return;
+      if (type === "eligibility" && criterion.kind === "min_years_experience" && (!Number.isFinite(Number(criterion.minimum)) || Number(criterion.minimum) <= 0)) return;
+
+      const key = `${type}:${normalizeText(term)}`;
       if (seen.has(key)) return;
       seen.add(key);
 
       const aliases = Array.isArray(value.aliases)
         ? [...new Set(value.aliases.filter(alias => typeof alias === "string" && alias.trim()).map(alias => alias.trim()))]
         : [];
-      keywords[name].push({ term, aliases, weight });
+      keywords[name].push({ term, aliases, alternatives, criterion, type, weight });
     });
   });
 
   return {
-    version: "1",
+    version: "2",
     jdHash,
     keywords,
   };
@@ -133,7 +151,16 @@ function rubricToWeightedKeywords(rubric) {
     ...(rubric.keywords.required || []),
     ...(rubric.keywords.preferred || []),
     ...(rubric.keywords.nice_to_have || []),
-  ];
+  ].filter(item => item.type !== "eligibility")
+    .map(item => ({
+      ...item,
+      // One satisfied option fulfils an OR requirement and earns its group
+      // weight exactly once. calculateATSScore already treats aliases as a
+      // single canonical keyword group.
+      aliases: item.type === "alternative"
+        ? [...new Set([...(item.aliases || []), ...(item.alternatives || [])])]
+        : item.aliases || [],
+    }));
 }
 
 function rubricToDisplayTiers(rubric) {
@@ -160,19 +187,26 @@ function extractJobRubric(jdText) {
 JOB DESCRIPTION:
 ${jdText}
 
-Extract a stable, conservative rubric from the job description. Do not use any resume context.
+Extract a stable, conservative ATS-like rubric from the job description. Do not use any resume context.
 - required: explicitly required, must-have, or central responsibility skills and qualifications.
 - preferred: explicitly preferred, bonus, plus, or nice-to-have skills.
 - nice_to_have: implied role-specific skills only when strongly supported by the description.
-- Keep terms canonical and concise. Do not include generic soft skills or broad job duties.
+- Use type "keyword" for a specific searchable skill or phrase. Keep terms canonical and concise. Do not include generic soft skills or broad job duties.
 - Add common resume spellings or abbreviations as aliases only when they are genuine equivalents.
+- Use type "alternative" only when a posting explicitly accepts any one of several options (for example AWS OR Azure OR GCP). Put the canonical choices in alternatives. This counts as one requirement, not one per option.
+- Use type "eligibility" for non-keyword screening requirements such as minimum years of experience or a technical degree. Do not create a keyword requirement for the same condition.
 - Return only terms relevant to screening this specific role; do not pad any tier.
 
 Output strict JSON:
 {
-  "required": [{"term": "Python", "aliases": ["Python 3"]}],
-  "preferred": [{"term": "Terraform", "aliases": []}],
-  "nice_to_have": [{"term": "GraphQL", "aliases": ["GQL"]}]
+  "required": [
+    {"type": "keyword", "term": "Python", "aliases": ["Python 3"]},
+    {"type": "alternative", "term": "Public cloud provider", "alternatives": ["AWS", "Microsoft Azure", "Google Cloud Platform"], "aliases": []},
+    {"type": "eligibility", "term": "8+ years of professional software engineering experience", "criterion": {"kind": "min_years_experience", "minimum": 8}, "aliases": []},
+    {"type": "eligibility", "term": "Technical degree", "criterion": {"kind": "technical_degree"}, "aliases": []}
+  ],
+  "preferred": [{"type": "keyword", "term": "Terraform", "aliases": []}],
+  "nice_to_have": [{"type": "keyword", "term": "GraphQL", "aliases": ["GQL"]}]
 }`;
 
   const rawRubric = callJsonModel(provider, apiKey, rubricPrompt, {
@@ -187,7 +221,58 @@ function roundScore(value) {
   return Math.round(value * 10) / 10;
 }
 
-function buildDeterministicBrief(ats, rubric) {
+function getEducationText(resumeText) {
+  if (typeof detectSections === "function") {
+    const sections = detectSections(resumeText);
+    if (sections.Education) return sections.Education;
+  }
+  return resumeText;
+}
+
+function findRubricTier(rubric, target) {
+  return ["required", "preferred", "nice_to_have"].find(tier =>
+    (rubric.keywords[tier] || []).includes(target)
+  ) || "required";
+}
+
+function evaluateEligibilitySignals(rubric, resumeText) {
+  const allItems = [
+    ...(rubric.keywords.required || []),
+    ...(rubric.keywords.preferred || []),
+    ...(rubric.keywords.nice_to_have || []),
+  ].filter(item => item.type === "eligibility");
+  const years = [...String(resumeText || "").matchAll(/\b(\d{1,2})\+?\s+years?\b/gi)]
+    .map(match => Number(match[1]))
+    .filter(Number.isFinite);
+  const maxYears = years.length ? Math.max(...years) : null;
+  const educationText = getEducationText(resumeText);
+  const hasDegree = /\b(?:b\.?\s?tech|bachelor(?:'s)?|b\.?\s?s\.?|bsc|m\.?\s?tech|master(?:'s)?|m\.?\s?s\.?|msc)\b/i.test(educationText)
+    && /\b(?:engineering|engg|computer|technology|technical)\b/i.test(educationText);
+
+  return allItems.map(item => {
+    const criterion = item.criterion || {};
+    if (criterion.kind === "min_years_experience") {
+      const minimum = Number(criterion.minimum);
+      const met = maxYears !== null && maxYears >= minimum;
+      return {
+        requirement: item.term,
+        tier: findRubricTier(rubric, item),
+        kind: criterion.kind,
+        status: met ? "met" : "not_met",
+        observedValue: maxYears,
+        minimum,
+      };
+    }
+    return {
+      requirement: item.term,
+      tier: findRubricTier(rubric, item),
+      kind: criterion.kind || "unknown",
+      status: hasDegree ? "met" : "not_met",
+    };
+  });
+}
+
+function buildDeterministicBrief(ats, rubric, resumeText) {
   const weightedKeywords = rubricToWeightedKeywords(rubric);
   const totalWeight = weightedKeywords.reduce((sum, item) => sum + Number(item.weight || 0), 0);
   const tierNames = ["required", "preferred", "nice_to_have"];
@@ -198,10 +283,13 @@ function buildDeterministicBrief(ats, rubric) {
     weakMatches: [],
     missingKeywords: { required: [], preferred: [], nice_to_have: [] },
     deprioritized: [],
+    eligibility: evaluateEligibilitySignals(rubric, resumeText),
   };
 
   tierNames.forEach(tier => {
     (rubric.keywords[tier] || []).forEach(item => {
+      if (item.type === "eligibility") return;
+
       const method = ats.matchMethod[item.term];
       const frequency = (ats.keywordFrequency || {})[item.term] || 0;
       const sections = (ats.sectionHits || {})[item.term] || [];
@@ -211,6 +299,7 @@ function buildDeterministicBrief(ats, rubric) {
         const missingItem = {
           keyword: item.term,
           aliases: item.aliases || [],
+          alternatives: item.alternatives || [],
           expectedGain: totalWeight ? roundScore((weight / totalWeight) * 100) : 0,
         };
         brief.missingKeywords[tier].push(missingItem);
@@ -274,7 +363,7 @@ function buildConfirmationOptions(deterministicBrief) {
       options.push({
         keyword: item.keyword,
         tier,
-        reason: "Not found in the current resume. Confirm direct experience before including it.",
+        expectedGain: item.expectedGain,
       });
     });
   });
@@ -316,7 +405,7 @@ function analyzeJob(jdText, resumeText, rubric) {
   const weightedKeywords = rubricToWeightedKeywords(rubric);
   const tieredKeywords = rubricToDisplayTiers(rubric);
   const ats = calculateATSScore(weightedKeywords, resumeText);
-  const deterministicBrief = buildDeterministicBrief(ats, rubric);
+  const deterministicBrief = buildDeterministicBrief(ats, rubric, resumeText);
 
   const insightPrompt = `You are an expert Career Coach and Recruiter.
 
@@ -435,6 +524,7 @@ Rules for this JSON:
     atsKeywordFrequency: ats.keywordFrequency,
     atsMatchMethod: ats.matchMethod,
     atsSectionHits: ats.sectionHits,
+    atsEligibility: deterministicBrief.eligibility,
     tailoringBrief,
   };
   analysis.markdown = buildCompactAnalysisMarkdown(tailoringBrief);

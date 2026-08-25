@@ -19,6 +19,8 @@ function renderAnalysisScan(analysis) {
     const preferredGaps = brief.missingKeywords?.preferred || [];
     const weakMatches = brief.weakMatches || [];
     const confirmationOptions = brief.confirmationOptions || [];
+    const expectedGainByKeyword = Object.values(brief.missingKeywords || {}).flat()
+        .reduce((gains, item) => ({ ...gains, [String(item.keyword || '').toLowerCase()]: item.expectedGain }), {});
     const priorityGaps = [...requiredGaps, ...preferredGaps, ...weakMatches].slice(0, 5);
     const decision = brief.decision || analysis.decision || 'MAYBE';
     const decisionStyle = {
@@ -67,10 +69,18 @@ function renderAnalysisScan(analysis) {
             <div style="margin-top:3px; font-size:12px; line-height:1.4; color:#92400e;">Every missing keyword is listed. Only checked terms will be sent to the resume writer.</div>
             <div style="margin-top:10px; display:grid; gap:8px;">
                 ${confirmationOptions.map((option, index) => `
+                    ${(() => {
+                        const gain = Number(option.expectedGain ?? expectedGainByKeyword[String(option.keyword || '').toLowerCase()]);
+                        const hasProjection = Number.isFinite(gain) && gain > 0;
+                        const lift = hasProjection
+                            ? `Score lift: +${gain}`
+                            : '';
+                        return `
                     <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer; color:#374151; font-size:13px; line-height:1.35;">
-                        <input class="ud-confirm-keyword" type="checkbox" value="${escapeHtml(option.keyword)}" data-reason="${escapeHtml(option.reason)}" style="margin:2px 0 0; accent-color:#0a66c2; width:15px; height:15px; flex:0 0 auto;">
-                        <span><strong>${escapeHtml(option.keyword)}</strong><span style="color:#92400e;"> · ${escapeHtml(String(option.tier || 'priority').replaceAll('_', ' '))}</span><br><span style="font-size:12px; color:#6b7280;">${escapeHtml(option.reason)}</span></span>
-                    </label>`).join('')}
+                        <input class="ud-confirm-keyword" type="checkbox" value="${escapeHtml(option.keyword)}" style="margin:2px 0 0; accent-color:#0a66c2; width:15px; height:15px; flex:0 0 auto;">
+                        <span><strong>${escapeHtml(option.keyword)}</strong><span style="color:#92400e;"> · ${escapeHtml(String(option.tier || 'priority').replaceAll('_', ' '))}</span>${lift ? `<br><span style="font-size:12px; color:#6b7280;">${escapeHtml(lift)}</span>` : ''}</span>
+                    </label>`;
+                    })()}`).join('')}
             </div>
         </div>` : '';
 
