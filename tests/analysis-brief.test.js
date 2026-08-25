@@ -37,3 +37,9 @@ assert.deepStrictEqual(JSON.parse(JSON.stringify(literalization)), [{
   method: "synonym",
   expectedGain: 4,
 }]);
+
+const filteredOptions = context.buildConfirmationOptions({
+  missingKeywords: { required: [{ keyword: "Amazon Web Services", expectedGain: 4 }], preferred: [], nice_to_have: [] },
+  recognizedEvidence: [{ keyword: "Amazon Web Services", method: "synonym" }],
+});
+assert.deepStrictEqual(JSON.parse(JSON.stringify(filteredOptions)), []);

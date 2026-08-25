@@ -362,8 +362,13 @@ function buildCompactAnalysisMarkdown(brief) {
 
 function buildConfirmationOptions(deterministicBrief) {
   const options = [];
+  const recognized = new Set((deterministicBrief.recognizedEvidence || [])
+    .map(item => String(item.keyword || "").toLowerCase()));
   ["required", "preferred", "nice_to_have"].forEach(tier => {
     (deterministicBrief.missingKeywords[tier] || []).forEach(item => {
+      // An alias/stem match belongs in literalization, not in the list of
+      // capabilities requiring confirmation.
+      if (recognized.has(String(item.keyword || "").toLowerCase())) return;
       options.push({
         keyword: item.keyword,
         tier,
