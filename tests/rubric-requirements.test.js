@@ -29,6 +29,7 @@ const score = context.calculateATSScore(
   "12+ years of experience. EDUCATION\nB.Tech - Electronics Engineering\nSKILLS\nCore Java, AWS",
 );
 assert.strictEqual(score.score, 100);
+assert.strictEqual(score.evidenceScore, 100);
 
 assert.deepStrictEqual(JSON.parse(JSON.stringify(context.evaluateEligibilitySignals(
   rubric,

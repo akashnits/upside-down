@@ -233,6 +233,8 @@ function countStemmedPhraseInSections(keyword, sectionMap) {
 function calculateATSScore(keywords, resumeText) {
   const matched = [];
   const missing = [];
+  const strictMatched = [];
+  const strictMissing = [];
   const keywordFrequency = {};
   const matchMethod = {};
   const sectionHits = {};
@@ -274,9 +276,10 @@ function calculateATSScore(keywords, resumeText) {
   const coverageMultiplier = { exact: 1.0, synonym: 1.0, stem: 0.5, ngram: 0.5 };
   let totalWeight = 0;
   let matchedWeight = 0;
+  let strictMatchedWeight = 0;
   let sectionQualitySum = 0;
 
-  weightedKeywords.forEach(({ term: keyword, weight, aliases = [] }) => {
+  weightedKeywords.forEach(({ term: keyword, weight, aliases = [], alternatives = [] }) => {
     if (!keyword || !Number.isFinite(Number(weight)) || Number(weight) <= 0) return;
 
     weight = Number(weight);
@@ -373,6 +376,19 @@ function calculateATSScore(keywords, resumeText) {
       }
     }
 
+    // The headline ATS score is intentionally literal: only an exact
+    // whole-phrase match earns credit. Alias and stem matches remain useful
+    // evidence for a recruiter, but they cannot hide a searchable phrase gap.
+    const strictAlternativeMatch = Array.isArray(alternatives) && alternatives.some(option =>
+      typeof option === "string" && wordBoundaryMatch(normalizeText(option), normalizedResume)
+    );
+    if (method === "exact" || strictAlternativeMatch) {
+      strictMatched.push(keyword);
+      strictMatchedWeight += weight;
+    } else {
+      strictMissing.push(keyword);
+    }
+
     if (method) {
       matched.push(keyword);
       matchMethod[keyword] = method;
@@ -394,23 +410,29 @@ function calculateATSScore(keywords, resumeText) {
   });
 
   // --- Scores ---
-  const score = totalWeight > 0
+  const evidenceScore = totalWeight > 0
     ? Math.round((matchedWeight / totalWeight) * 100)
+    : 0;
+  const score = totalWeight > 0
+    ? Math.round((strictMatchedWeight / totalWeight) * 100)
     : 0;
   const sectionScore = matchedWeight > 0
     ? Math.round((sectionQualitySum / matchedWeight) * 100)
     : 0;
 
-  Logger.log(`[ATS] Coverage: ${score}%, Section quality: ${sectionScore}%, Methods: ${JSON.stringify(methodCounts)}`);
+  Logger.log(`[ATS] Strict coverage: ${score}%, Recognized evidence: ${evidenceScore}%, Section quality: ${sectionScore}%, Methods: ${JSON.stringify(methodCounts)}`);
   Logger.log(`[ATS] Frequencies: ${JSON.stringify(keywordFrequency)}`);
   Logger.log(`[ATS] Section hits: ${JSON.stringify(sectionHits)}`);
 
   return {
     score,
     coverageScore: score,
+    evidenceScore,
     sectionScore,
     matched,
     missing,
+    strictMatched,
+    strictMissing,
     keywordFrequency,
     matchMethod,
     sectionHits,

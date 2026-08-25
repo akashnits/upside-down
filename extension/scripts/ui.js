@@ -18,6 +18,7 @@ function renderAnalysisScan(analysis) {
     const requiredGaps = brief.missingKeywords?.required || [];
     const preferredGaps = brief.missingKeywords?.preferred || [];
     const weakMatches = brief.weakMatches || [];
+    const recognizedEvidence = brief.recognizedEvidence || [];
     const confirmationOptions = brief.confirmationOptions || [];
     const expectedGainByKeyword = Object.values(brief.missingKeywords || {}).flat()
         .reduce((gains, item) => ({ ...gains, [String(item.keyword || '').toLowerCase()]: item.expectedGain }), {});
@@ -33,7 +34,7 @@ function renderAnalysisScan(analysis) {
     const metrics = [
         { label: 'Current match', value: score, color: '#0a66c2', background: '#eff6ff' },
         { label: 'Exact matches', value: String((brief.strongMatches || []).length), color: '#15803d', background: '#f0fdf4' },
-        { label: 'Priority gaps', value: String(requiredGaps.length + preferredGaps.length + weakMatches.length), color: '#b45309', background: '#fffbeb' },
+        { label: 'Recognized evidence', value: String(recognizedEvidence.length), color: '#7c3aed', background: '#f5f3ff' },
     ].map(metric => `
         <div style="border-top:3px solid ${metric.color}; padding:8px 4px 0; min-width:0;">
             <div style="font-size:11px; font-weight:700; letter-spacing:0.06em; color:#6b7280;">${metric.label}</div>

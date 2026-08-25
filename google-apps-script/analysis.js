@@ -276,11 +276,11 @@ function buildDeterministicBrief(ats, rubric, resumeText) {
   const weightedKeywords = rubricToWeightedKeywords(rubric);
   const totalWeight = weightedKeywords.reduce((sum, item) => sum + Number(item.weight || 0), 0);
   const tierNames = ["required", "preferred", "nice_to_have"];
-  const weakMethods = new Set(["stem", "ngram"]);
-  const missingSet = new Set(ats.missing.map(term => term.toLowerCase()));
+  const strictMissingSet = new Set((ats.strictMissing || ats.missing || []).map(term => term.toLowerCase()));
   const brief = {
     strongMatches: [],
     weakMatches: [],
+    recognizedEvidence: [],
     missingKeywords: { required: [], preferred: [], nice_to_have: [] },
     deprioritized: [],
     eligibility: evaluateEligibilitySignals(rubric, resumeText),
@@ -295,7 +295,7 @@ function buildDeterministicBrief(ats, rubric, resumeText) {
       const sections = (ats.sectionHits || {})[item.term] || [];
       const weight = Number(item.weight || 0);
 
-      if (missingSet.has(item.term.toLowerCase())) {
+      if (strictMissingSet.has(item.term.toLowerCase())) {
         const missingItem = {
           keyword: item.term,
           aliases: item.aliases || [],
@@ -310,16 +310,18 @@ function buildDeterministicBrief(ats, rubric, resumeText) {
             reason: "Nice-to-have; address after required and preferred terms",
           });
         }
-      } else if (weakMethods.has(method)) {
-        brief.weakMatches.push({
+      }
+
+      const isStrictMatch = !strictMissingSet.has(item.term.toLowerCase());
+      if (isStrictMatch) {
+        brief.strongMatches.push({
           keyword: item.term,
-          method,
+          method: method === "synonym" && item.type === "alternative" ? "alternative" : method,
           frequency,
           sections,
-          expectedGainIfExact: totalWeight ? roundScore((weight * 0.5 / totalWeight) * 100) : 0,
         });
       } else if (method) {
-        brief.strongMatches.push({
+        brief.recognizedEvidence.push({
           keyword: item.term,
           method,
           frequency,
@@ -421,6 +423,7 @@ ${JSON.stringify(rubric)}
 DETERMINISTIC ATS MATCH:
 ${JSON.stringify({
   currentCoverage: ats.score,
+  recognizedEvidenceCoverage: ats.evidenceScore,
   sectionQuality: ats.sectionScore,
   ...deterministicBrief,
 })}
@@ -518,9 +521,12 @@ Rules for this JSON:
     atsKeywordTiers: tieredKeywords,
     atsScore: ats.score,
     atsCoverageScore: ats.coverageScore,
+    atsEvidenceScore: ats.evidenceScore,
     atsSectionScore: ats.sectionScore,
     atsMatched: ats.matched,
     atsMissing: ats.missing,
+    atsStrictMatched: ats.strictMatched,
+    atsStrictMissing: ats.strictMissing,
     atsKeywordFrequency: ats.keywordFrequency,
     atsMatchMethod: ats.matchMethod,
     atsSectionHits: ats.sectionHits,

@@ -25,4 +25,21 @@ assert.strictEqual(method("Message Queuing", "Built a Kafka analytics consumer."
 // A phrase whose words occur in different contexts is not a match.
 assert.strictEqual(method("Distributed Systems", "Designed a distributed team process and maintained internal systems."), undefined);
 
+// Literal ATS coverage stays strict even when the engine recognizes equivalent
+// evidence. This keeps score-lift calculations honest.
+const aliasScore = context.calculateATSScore(
+  [{ term: "Amazon Web Services", aliases: ["AWS"], weight: 1 }],
+  "Operated workloads on AWS.",
+);
+assert.strictEqual(aliasScore.score, 0);
+assert.strictEqual(aliasScore.evidenceScore, 100);
+assert.deepStrictEqual(JSON.parse(JSON.stringify(aliasScore.strictMissing)), ["Amazon Web Services"]);
+
+const stemScore = context.calculateATSScore(
+  [{ term: "Mentoring junior engineers", weight: 1 }],
+  "Mentored junior engineers on production debugging.",
+);
+assert.strictEqual(stemScore.score, 0);
+assert.strictEqual(stemScore.evidenceScore, 50);
+
 console.log("ATS engine regression tests passed");
