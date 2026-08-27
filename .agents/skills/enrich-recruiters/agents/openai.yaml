@@ -1,0 +1,3 @@
+interface:
+  display_name: "Enrich Recruiters"
+  short_description: "Find and enrich recruiters for Notion job records"

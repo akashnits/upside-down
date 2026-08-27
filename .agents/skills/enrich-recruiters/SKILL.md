@@ -1,0 +1,50 @@
+---
+name: enrich-recruiters
+description: "Find current, role-relevant recruiters for tracked Notion job records and enrich them with verified work emails, prioritizing Bengaluru. Use for recruiter contacts, not candidate sourcing or outreach."
+---
+
+# Enrich Recruiters
+
+Source a small, accurate set of in-house recruiters for existing job records and find verified business emails. Prefer current technical recruiters, talent-acquisition partners, or sourcers over generic HR or leadership contacts.
+
+## Defaults and boundaries
+
+- If the user gives no database, resolve the exact Notion database named `Upside Down`; never silently substitute `Applications` or another similarly named database.
+- Require one exact Notion `Job ID` and process only that matching job record. Never fall back to the latest records, a title match, or a company match. Default to up to two contacts for that job and locality priority Bengaluru, then India, then the job's stated location.
+- Require a current employer, recruiting evidence, and an exact direct LinkedIn profile URL surfaced by current public research. Never invent a profile URL.
+- Exclude former employees, agencies, unrelated HR, and senior/global/operations leaders used only to fill a quota. Do not use hiring managers unless the user allows it.
+- When at least one verified email is found, automatically update only the selected Notion row's `Email` rich-text property. Save every verified email in rank order, separated by `; `. Never send outreach, add properties, or modify unrelated rows.
+
+## Fast workflow
+
+1. Resolve and query Notion once.
+   - Search for the exact `Upside Down` database, fetch it once, and validate that its schema includes job name/title, company, role, job link, job ID, a rich-text `Email` property, and canonical `createdTime`.
+   - Query only `url`, `createdTime`, `Name`, `Company`, `Role`, `Job Link`, `Job ID`, and existing `Email` for the exact user-supplied `Job ID`. Do not query or process unrelated rows. If no row or more than one row matches, stop and report that result rather than choosing a row.
+
+2. Research employers in batches.
+   - Use web search queries such as `site:linkedin.com/in (recruiter OR "talent acquisition" OR sourcer) "Employer" Bengaluru India`.
+   - Put up to four employer queries in one web call and run another batch only when needed. Use the current search-result snippet as evidence; open an individual profile only if the snippet is ambiguous.
+   - Dedupe and keep at most the requested contact count per job. Record the direct profile URL, current title/evidence, employer, and location.
+
+3. Enrich emails with the bundled runner.
+   - Check `ANYMAIL_FINDER_API_KEY`, `PROSPEO_API_KEY`, and `LEADMAGIC_API_KEY` once without printing values. If none is set, mark email status `provider unavailable` and stop enrichment.
+   - When any key is available, read [the provider reference](references/email-provider-api.md), then pass all recruiter records to `scripts/enrich_emails.py` through stdin. The runner batches requests concurrently by stage: AnyMail Finder for all profiles, Prospeo for AnyMail misses, and LeadMagic for remaining misses. Do not hand-roll shell loops.
+   - Accept only: AnyMail `email_status=valid` plus `valid_email`; Prospeo `error=false`, verified/revealed email; LeadMagic `status=valid` plus email. Reject personal, ambiguous, invalid, or company-mismatched results.
+   - Report only accepted email, provider, and `verified`/`not found`/`provider unavailable` status. Keep raw provider responses in memory only.
+
+4. Create or refresh `recruiter-results-<job-id>.md` in the workspace. Put each recruiter's full name and raw LinkedIn URL first, then role, evidence, email, provider, and status. Include the Notion database name, the selected job ID, the one row processed, and any gaps.
+
+5. Synchronize Notion after enrichment.
+   - If no verified email is found, leave `Email` unchanged.
+   - If one or more verified emails are found, replace `Email` with every accepted address in recruiter-rank order, separated by `; ` (for example, `first@company.com; second@company.com`). Do not create or update a separate contacts field.
+   - Fetch the selected page directly after writing to verify the saved `Email` value. Do not rely on an immediately repeated SQL query, which may be stale.
+
+## Compact invocation
+
+For “get contacts for job ID `<id>`” or equivalent: resolve only that exact `Upside Down` row, find up to two qualified contacts, apply Bengaluru priority, create `recruiter-results-<job-id>.md`, and automatically update `Email` with all verified addresses separated by `; `.
+
+If the user does not provide a Job ID, ask for one. If the user supplies a contact count, location, database link, or output filename, use those values.
+
+## Output rules
+
+Lead with coverage achieved. State the database used, selected job ID, one record processed, verified emails found, rows updated, and any gaps. Show direct LinkedIn URLs plainly in the Markdown file and identify non-local fallbacks. For genuine gaps, suggest only a focused next step such as authenticated LinkedIn access, broader location/role scope, or missing provider access.
