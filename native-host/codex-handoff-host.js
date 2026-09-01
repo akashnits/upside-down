@@ -9,6 +9,12 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const WORKER = path.join(__dirname, 'codex-task-worker.js');
 const TASK_DIR = '/tmp/upside-down-codex-tasks';
 const LOG_PATH = '/tmp/upside-down-codex-native-worker.log';
+const CODEX_BIN = path.join(process.env.HOME, '.codex', 'packages', 'standalone', 'current', 'codex');
+// Toggle this one value to change the extension's default dispatch mode.
+// Supported values: 'foreground' (visible Terminal TUI) or 'background'
+// (detached app-server worker). Individual native callers may still override
+// it by sending runMode explicitly.
+const DEFAULT_RUN_MODE = 'foreground';
 let inputBuffer = Buffer.alloc(0);
 
 function writeMessage(message) {
@@ -33,6 +39,72 @@ function pathsFor(jobId) {
 
 function readState(statePath) {
     try { return JSON.parse(fs.readFileSync(statePath, 'utf8')); } catch (_) { return null; }
+}
+
+function validateJobId(jobId) {
+    if (!/^[0-9]+$/.test(String(jobId || ''))) throw new Error('Invalid job ID');
+    return String(jobId);
+}
+
+function getTailoringSession(jobId) {
+    const { statePath } = pathsFor(validateJobId(jobId));
+    const state = readState(statePath);
+    return {
+        success: true,
+        jobId: String(jobId),
+        status: state?.status || 'pending',
+        threadId: typeof state?.threadId === 'string' ? state.threadId : null,
+    };
+}
+
+function shellQuote(value) {
+    return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
+function openTailoringSession(jobId) {
+    const session = getTailoringSession(jobId);
+    // Codex thread IDs are UUIDs. Validate the persisted value before it is
+    // included in the Terminal command, even though the state directory is
+    // private to the native host.
+    if (!session.threadId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session.threadId)) {
+        throw new Error('Codex session is not ready yet');
+    }
+    const command = `${shellQuote(CODEX_BIN)} resume --include-non-interactive ${shellQuote(session.threadId)}`;
+    const appleScript = `tell application "Terminal"\nactivate\ndo script ${JSON.stringify(command)}\nend tell`;
+    const terminal = spawn('/usr/bin/osascript', ['-e', appleScript], { detached: true, stdio: 'ignore' });
+    terminal.unref();
+    fs.appendFileSync(LOG_PATH, `${new Date().toISOString()} SESSION_OPENED jobId=${session.jobId} threadId=${session.threadId}\n`);
+    return { ...session, opened: true };
+}
+
+function buildTailoringPrompt(task) {
+    return `Use the checked-in project skill at .agents/skills/resume-tailor/SKILL.md to execute this tailoring task; do not use a globally installed resume-tailor skill. Do not create a resume draft before invoking the skill. The skill will fetch the task and submit only a Summary/Skills patch. The backend will copy the canonical base resume into the job folder, apply and verify the patch, then rescore and update Notion. After apply succeeds, follow the skill instructions to draft and save the concise evidence-backed outreach email before running enrich-recruiters. Then run enrich-recruiters with this exact saved Job ID: ${task.jobId}.\n\nTask reference:\n${JSON.stringify({ company: task.company, role: task.role, endpoint: task.agentEndpoint, jobId: task.jobId }, null, 2)}`;
+}
+
+function startForegroundTailoring(taskReference) {
+    fs.mkdirSync(TASK_DIR, { recursive: true, mode: 0o700 });
+    const { statePath } = pathsFor(taskReference.jobId);
+    const previous = readState(statePath);
+    if (previous?.status === 'foreground') {
+        return { success: true, alreadyStarted: true, foreground: true };
+    }
+    if (previous && ['started', 'running'].includes(previous.status) && isProcessAlive(previous.pid)) {
+        return { success: false, error: 'This tailoring task is already running in the background. Wait for it to finish before starting a foreground session.' };
+    }
+
+    const promptPath = path.join(TASK_DIR, `${taskReference.jobId}.foreground-prompt.txt`);
+    fs.writeFileSync(promptPath, buildTailoringPrompt(taskReference), { encoding: 'utf8', mode: 0o600 });
+    fs.writeFileSync(statePath, JSON.stringify({ status: 'foreground', jobId: taskReference.jobId, startedAt: new Date().toISOString() }), { encoding: 'utf8', mode: 0o600 });
+
+    // The Terminal-hosted TUI is the sole writer for this job. Its prompt is read
+    // from a private file so job text never has to be interpolated into a shell
+    // command, and --no-alt-screen preserves the visible run history.
+    const command = `cd ${shellQuote(PROJECT_ROOT)} && exec ${shellQuote(CODEX_BIN)} --no-alt-screen --sandbox workspace-write "$(cat ${shellQuote(promptPath)})"`;
+    const appleScript = `tell application "Terminal"\nactivate\ndo script ${JSON.stringify(command)}\nend tell`;
+    const terminal = spawn('/usr/bin/osascript', ['-e', appleScript], { detached: true, stdio: 'ignore' });
+    terminal.unref();
+    fs.appendFileSync(LOG_PATH, `${new Date().toISOString()} FOREGROUND_TASK_STARTED jobId=${taskReference.jobId}\n`);
+    return { success: true, started: true, foreground: true };
 }
 
 function startWorker(taskReference) {
@@ -71,8 +143,14 @@ async function handleMessage(message) {
     if (!message || !message.action) throw new Error('Missing native host action');
     if (message.action === 'startTailoring') {
         validateTaskReference(message.taskReference);
-        return startWorker(message.taskReference);
+        const runMode = message.runMode || DEFAULT_RUN_MODE;
+        if (runMode !== 'foreground' && runMode !== 'background') throw new Error(`Unsupported run mode: ${runMode}`);
+        return runMode === 'foreground'
+            ? startForegroundTailoring(message.taskReference)
+            : startWorker(message.taskReference);
     }
+    if (message.action === 'getTailoringSession') return getTailoringSession(message.jobId);
+    if (message.action === 'openTailoringSession') return openTailoringSession(message.jobId);
     throw new Error('Unsupported native host action');
 }
 

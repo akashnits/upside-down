@@ -281,7 +281,7 @@ function createPanel() {
                 <div style="text-align:center; padding:20px 20px 10px;">
                     <div style="font-size:40px; margin-bottom:10px;">✅</div>
                     <h3 style="margin:0 0 10px 0; color:#155724;">Tailoring started in Codex</h3>
-                    <div data-ud-tailoring-status style="color:#666; font-size:13px; margin-bottom:15px;">${details.alreadyStarted ? 'This task was already running.' : 'The resume-tailor skill is working in the background.'}</div>
+                    <div data-ud-tailoring-status style="color:#666; font-size:13px; margin-bottom:15px;">${details.alreadyStarted ? 'This task is already open in Terminal.' : details.foreground ? 'Codex is running in Terminal. You can watch and interact with the harness there.' : 'The resume-tailor skill is working in the background.'}</div>
                     <div data-ud-tailoring-link style="font-size:13px;"></div>
                     <div data-ud-tailoring-details style="display:grid; gap:10px; text-align:left; color:#374151; font-size:13px; line-height:1.4; margin-top:15px;"></div>
                 </div>

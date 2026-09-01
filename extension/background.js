@@ -88,10 +88,13 @@ function getTailoringStatus(payload) {
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'startTailoring') {
+    if (request.action === 'startTailoring' || request.action === 'getTailoringSession' || request.action === 'openTailoringSession') {
+        const nativeMessage = request.action === 'startTailoring'
+            ? { action: 'startTailoring', taskReference: request.taskReference, runMode: request.runMode }
+            : { action: request.action, jobId: request.jobId };
         chrome.runtime.sendNativeMessage(
             'com.upside_down.codex_handoff',
-            { action: 'startTailoring', taskReference: request.taskReference },
+            nativeMessage,
             (response) => {
                 if (chrome.runtime.lastError) {
                     sendResponse({ success: false, error: chrome.runtime.lastError.message });

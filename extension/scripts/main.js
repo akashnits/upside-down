@@ -88,7 +88,8 @@
                                 return;
                             }
                             panel.showSuccess({
-                                alreadyStarted: tailoringResponse.alreadyStarted === true
+                                alreadyStarted: tailoringResponse.alreadyStarted === true,
+                                foreground: tailoringResponse.foreground === true,
                             });
                             if (tailoringResponse.success) {
                                 panel.watchTailoringStatus(saveResponse.jobId);

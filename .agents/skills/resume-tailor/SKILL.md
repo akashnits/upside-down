@@ -8,12 +8,13 @@ description: Execute an Upside Down resume-tailoring task through the Base Resum
 Use this skill only when the user provides an Upside Down task reference with
 `endpoint` and `jobId`.
 
-Set `SKILL_ROOT` once before running commands. Prefer the global installation;
-fall back to the checked-in project skill when working in this repository:
+Set `SKILL_ROOT` once before running commands. This repository's checked-in
+skill is the source of truth for its Apps Script task contract; do not select a
+globally installed `resume-tailor` skill, which may target a different API
+version:
 
 ```sh
-SKILL_ROOT="${CODEX_HOME:-$HOME/.codex}/skills/resume-tailor"
-[ -d "$SKILL_ROOT" ] || SKILL_ROOT=".agents/skills/resume-tailor"
+SKILL_ROOT=".agents/skills/resume-tailor"
 ```
 
 ## Network access
