@@ -68,16 +68,15 @@ function getAuthorizedTailoringEntry(data) {
 }
 
 function claimTailoringTask(data) {
-  const authorized = getAuthorizedTailoringEntry(data);
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
 
   try {
-    // Re-read after acquiring the lock so a claimed task records a single lifecycle state.
-    const entry = findNotionEntry(authorized.jobId);
-    if (!entry || !entry.tailoringTask) {
-      throw new Error("Tailoring task not found. Prepare the task from the extension first.");
-    }
+    // Resolve only after acquiring the lock. The previous implementation looked up
+    // the same Notion entry both before and after the lock, adding two serial API
+    // calls to every claim without improving the protected state transition.
+    const authorized = getAuthorizedTailoringEntry(data);
+    const entry = authorized.entry;
 
     const task = {
       ...entry.tailoringTask,
@@ -85,13 +84,18 @@ function claimTailoringTask(data) {
       claimedAt: entry.tailoringTask.claimedAt || new Date().toISOString(),
     };
 
-    updateNotionPage(entry.pageId, {
-      analysis: buildTaskAnalysis(task),
-      tailoringTask: task,
-      status: "Tailoring",
-      systemState: entry.systemState,
-      systemStateBlockId: entry.systemStateBlockId,
-    });
+    // A repeated claim is common during retries. Avoid a no-op page + system-state
+    // update when the task has already been claimed and is already in this state.
+    const needsUpdate = entry.status !== "Tailoring" || entry.tailoringTask.status !== "Tailoring" || !entry.tailoringTask.claimedAt;
+    if (needsUpdate) {
+      updateNotionPage(entry.pageId, {
+        analysis: buildTaskAnalysis(task),
+        tailoringTask: task,
+        status: "Tailoring",
+        systemState: entry.systemState,
+        systemStateBlockId: entry.systemStateBlockId,
+      });
+    }
 
     return {
       jobId: authorized.jobId,
@@ -209,7 +213,6 @@ function writeRecruiterEmailWithRetry(pageId, emailValue, token) {
 }
 
 function saveRecruiterEmails(data) {
-  const authorized = getAuthorizedTailoringEntry(data);
   const emails = normalizeRecruiterEmails(data.emails || []);
   const emailValue = emails.join("; ");
   const recruiterContacts = normalizeRecruiterContacts(data.contacts, emails);
@@ -218,10 +221,21 @@ function saveRecruiterEmails(data) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    const current = readNotionPageEmailWithRetry(authorized.entry.pageId, token);
-    // A no-result enrichment must not erase an existing verified address.
-    const targetEmail = emails.length ? emailValue : current;
-    if (current !== targetEmail) writeRecruiterEmailWithRetry(authorized.entry.pageId, targetEmail, token);
+    const authorized = getAuthorizedTailoringEntry(data);
+    const existingEmail = authorized.entry.recruiterEmail || "";
+    // A no-result enrichment must not erase an existing verified address. In this
+    // case the direct read doubles as the required final verification.
+    const targetEmail = emails.length
+      ? emailValue
+      : readNotionPageEmailWithRetry(authorized.entry.pageId, token);
+
+    // The Job ID lookup already contains the current Email property. For a new
+    // verified result, write immediately and reserve the direct GET for the
+    // mandatory post-write read-back. This removes one serial Notion request.
+    if (emails.length && existingEmail !== targetEmail) {
+      writeRecruiterEmailWithRetry(authorized.entry.pageId, targetEmail, token);
+    }
+
     let verified = false;
     let lastReadError = null;
     for (let attempt = 1; attempt <= 3; attempt += 1) {
@@ -229,7 +243,9 @@ function saveRecruiterEmails(data) {
       if (attempt < 3) Utilities.sleep(250 * Math.pow(2, attempt - 1));
     }
     if (!verified) throw lastReadError || new Error("Notion recruiter email read-back did not match");
-    updateNotionPage(authorized.entry.pageId, { recruiterEmail: targetEmail, recruiterEnrichment: "completed", recruiterContacts, systemState: authorized.entry.systemState, systemStateBlockId: authorized.entry.systemStateBlockId });
+    // Email has already been verified above. Persist only enrichment metadata so
+    // this state update does not issue a redundant Email property write.
+    updateNotionPage(authorized.entry.pageId, { recruiterEnrichment: "completed", recruiterContacts, systemState: authorized.entry.systemState, systemStateBlockId: authorized.entry.systemStateBlockId });
     return { jobId: authorized.jobId, recruiterEnrichment: "completed", recruiters: targetEmail || null, recruiterContacts };
   } finally { lock.releaseLock(); }
 }
@@ -300,17 +316,16 @@ function validatePatchAgainstBaseResume(patch) {
 }
 
 function applyTailoringPatchForTask(data) {
-  const authorized = getAuthorizedTailoringEntry(data);
   const patch = normalizeTailoringPatch(data.patch);
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
 
   try {
+    // Resolve once under the lock; this is both the authorization check and the
+    // source of the current task/draft state used below.
+    const authorized = getAuthorizedTailoringEntry(data);
     validatePatchAgainstBaseResume(patch);
-    const entry = findNotionEntry(authorized.jobId);
-    if (!entry || !entry.tailoringTask) {
-      throw new Error("Tailoring task not found. Prepare the task from the extension first.");
-    }
+    const entry = authorized.entry;
     const rubric = entry.tailoringTask.rubric || entry.rubric;
     if (!rubric) throw new Error("No saved ATS rubric exists for this task");
 

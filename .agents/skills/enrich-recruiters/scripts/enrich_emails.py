@@ -18,7 +18,10 @@ from urllib.request import Request, urlopen
 
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-TIMEOUT_SECONDS = 25
+# A failed provider must not hold the entire recruiter workflow for more than a
+# few seconds. Individual providers are retried by the next task run; the
+# fallback stage below preserves verified-only acceptance semantics.
+TIMEOUT_SECONDS = max(3, min(20, int(os.environ.get("EMAIL_PROVIDER_TIMEOUT_SECONDS", "10"))))
 
 
 def request_json(url: str, headers: dict[str, str], payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -114,6 +117,28 @@ def parallel(items: list[dict[str, Any]], function: Any, key: str | None) -> lis
         return list(executor.map(lambda item: function(item, key), items))
 
 
+def parallel_fallbacks(items: list[dict[str, Any]], prospeo_key: str | None, leadmagic_key: str | None) -> list[dict[str, Any]]:
+    """Run independent fallback providers together, preferring Prospeo results.
+
+    AnyMail Finder remains the first, lower-cost stage. Once it misses, there is
+    no correctness dependency between Prospeo and LeadMagic, so concurrent calls
+    cut the miss-path latency from two timeouts to one while retaining the exact
+    provider-specific verification checks in each function.
+    """
+    if not items:
+        return []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(16, len(items) * 2)) as executor:
+        futures = [
+            (
+                executor.submit(call_prospeo, item, prospeo_key),
+                executor.submit(call_leadmagic, item, leadmagic_key),
+            )
+            for item in items
+        ]
+        paired_results = [(prospect.result(), lead.result()) for prospect, lead in futures]
+    return [prospect if prospect.get("status") == "verified" else lead for prospect, lead in paired_results]
+
+
 def main() -> int:
     try:
         items = json.load(sys.stdin)
@@ -130,11 +155,7 @@ def main() -> int:
 
     results = parallel(items, call_anymail, keys["anymail"])
     misses = [item for item, result in zip(items, results) if result.get("status") != "verified"]
-    fallback = parallel(misses, call_prospeo, keys["prospeo"])
-    fallback_by_url = {result["linkedin_url"]: result for result in fallback}
-    results = [fallback_by_url.get(result.get("linkedin_url"), result) for result in results]
-    misses = [item for item, result in zip(items, results) if result.get("status") != "verified"]
-    fallback = parallel(misses, call_leadmagic, keys["leadmagic"])
+    fallback = parallel_fallbacks(misses, keys["prospeo"], keys["leadmagic"])
     fallback_by_url = {result["linkedin_url"]: result for result in fallback}
     results = [fallback_by_url.get(result.get("linkedin_url"), result) for result in results]
     print(json.dumps(results, separators=(",", ":")))
