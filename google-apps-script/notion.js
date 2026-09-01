@@ -297,7 +297,6 @@ function findNotionEntry(jobId) {
     pageId: page.id,
     resumeUrl: (resumeLink && resumeLink.url) || null,
     recruiterEmail: getNotionRichTextValue(page.properties["Email"]) || (page.properties["Email"] && page.properties["Email"].email) || null,
-    outreachDraft: getNotionRichTextValue(page.properties["Outreach Draft"]) || systemState.outreachDraft || null,
     rubric: systemState.rubric || null,
     rubricVersion: systemState.rubricVersion || null,
     jdHash: systemState.jdHash || null,
@@ -397,6 +396,7 @@ function initNotionDatabase(dbId, token) {
       "Resume Link": { url: {} },
       "Status": { select: { options: [{ name: "Tailoring", color: "yellow" }, { name: "To Review", color: "gray" }, { name: "Applied", color: "blue" }, { name: "Interview", color: "purple" }, { name: "Rejected", color: "red" }] } },
       "Date": { date: {} },
+      "Outreach Draft": { rich_text: {} },
     },
   };
   const response = UrlFetchApp.fetch(
