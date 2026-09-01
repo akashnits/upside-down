@@ -229,6 +229,10 @@ function doPost(e) {
       return jsonOutput({ success: true, ...saveTailoringOutreach(data) });
     }
 
+    if (action === "saveRecruiterEmails") {
+      return jsonOutput({ success: true, ...saveRecruiterEmails(data) });
+    }
+
     // --- AGENT ACTION: COPY BASE, APPLY PATCH, VERIFY, RESCORE, AND PERSIST ---
     if (action === "applyTailoringPatch") {
       return jsonOutput({ success: true, ...applyTailoringPatchForTask(data) });

@@ -294,10 +294,17 @@ function createPanel() {
             if (previousPoller) clearInterval(previousPoller);
             const poll = () => chrome.runtime.sendMessage({ action: 'getTailoringStatus', payload: { jobId } }, response => {
                 if (!response?.success) return;
-                const done = (response.status === 'To Review' || response.status === 'Completed') && Boolean(response.outreachDraft);
+                const done = (response.status === 'To Review' || response.status === 'Completed')
+                    && Boolean(response.outreachDraft)
+                    && response.recruiterEnrichment === 'completed';
                 const result = panel.querySelector('#ud-result');
                 if (!result) return;
-                const status = done ? `Tailoring complete. ATS score: ${response.atsScore ?? 'n/a'}` : `Tailoring status: ${response.status}`;
+                const waitingForRecruiters = !done
+                    && (response.status === 'To Review' || response.status === 'Completed')
+                    && response.recruiterEnrichment !== 'completed';
+                const status = done
+                    ? `Tailoring complete. ATS score: ${response.atsScore ?? 'n/a'}`
+                    : `Tailoring status: ${response.status}${waitingForRecruiters ? ' · waiting for recruiter enrichment' : ''}`;
                 const link = response.documentUrl ? ` <a href="${response.documentUrl}" target="_blank">Open resume</a>` : '';
                 result.querySelector('[data-ud-tailoring-status]')?.replaceChildren(document.createTextNode(status));
                 const linkEl = result.querySelector('[data-ud-tailoring-link]');
@@ -308,10 +315,18 @@ function createPanel() {
                         : `${response.scoreDelta >= 0 ? '+' : ''}${response.scoreDelta} points`;
                     const terms = [...(response.changes?.confirmedKeywords || []), ...(response.changes?.exactTerms || [])];
                     const changes = terms.length ? terms.join(', ') : 'Summary and Skills refined';
-                    const recruiters = response.recruiters || 'No recruiter email found yet';
+                    const contacts = response.recruiterContacts || [];
+                    const recruiters = contacts.length
+                        ? contacts.map(contact => {
+                            const name = escapeHtml(contact.name || 'Recruiter');
+                            const email = contact.email ? escapeHtml(contact.email) : escapeHtml(contact.status || 'No verified email');
+                            const profile = contact.linkedinUrl ? ` <a href="${escapeHtml(contact.linkedinUrl)}" target="_blank" rel="noopener">LinkedIn</a>` : '';
+                            return `<div style="margin-top:5px;"><b>${name}</b><br>${email}${profile}</div>`;
+                        }).join('')
+                        : (response.recruiters ? escapeHtml(response.recruiters) : 'Enrichment completed; no verified recruiter email found');
                     const details = result.querySelector('[data-ud-tailoring-details]');
                     const outreach = response.outreachDraft ? `<div><b>Cold email</b><div style="white-space:pre-wrap; margin-top:5px; padding:10px; background:#f8f9fa; border-left:3px solid #0A66C2;">${response.outreachDraft}</div></div>` : '';
-                    if (details) details.innerHTML = `<div><b>ATS improvement</b><br>${delta}</div><div><b>What changed</b><br>${changes}</div>${outreach}<div><b>Recruiters</b><br><span style="white-space:pre-wrap;">${recruiters}</span></div>`;
+                    if (details) details.innerHTML = `<div><b>ATS improvement</b><br>${delta}</div><div><b>What changed</b><br>${changes}</div>${outreach}<div><b>Recruiter enrichment</b><br>${recruiters}</div>`;
                 }
                 if (done) {
                     clearInterval(tailoringPollers.get(String(jobId)));

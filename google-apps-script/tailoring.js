@@ -133,11 +133,105 @@ function getTailoringStatus(data) {
       exactTerms: literalizeKeywords,
     },
     completedAt: task.completedAt || null,
-    recruiterEnrichment: entry.recruiterEmail ? "completed" : "pending",
+    recruiterEnrichment: entry.recruiterEnrichment || (entry.recruiterEmail ? "completed" : "pending"),
     recruiters: entry.recruiterEmail,
+    recruiterContacts: entry.recruiterContacts || [],
     outreachDraft: entry.outreachDraft,
     fitHighlights: entry.fitHighlights,
   };
+}
+
+function normalizeRecruiterEmails(emails) {
+  if (!Array.isArray(emails) || emails.length > 20) throw new Error("Recruiter emails must be an array with at most 20 addresses");
+  const seen = {};
+  return emails.map((value, index) => {
+    if (typeof value !== "string") throw new Error(`Recruiter email ${index + 1} must be a string`);
+    const email = value.trim().toLowerCase();
+    if (!email || email.length > 254 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error(`Recruiter email ${index + 1} is invalid`);
+    if (seen[email]) return null;
+    seen[email] = true;
+    return email;
+  }).filter(Boolean);
+}
+
+function normalizeRecruiterContacts(contacts, emails) {
+  if (contacts === undefined) return emails.map(email => ({ email, status: "verified" }));
+  if (!Array.isArray(contacts) || contacts.length > 20) throw new Error("Recruiter contacts are invalid");
+  return contacts.map((contact, index) => {
+    if (!contact || typeof contact !== "object" || typeof contact.name !== "string") throw new Error(`Recruiter contact ${index + 1} is invalid`);
+    const email = typeof contact.email === "string" ? contact.email.trim().toLowerCase() : "";
+    if (email && emails.indexOf(email) === -1) throw new Error(`Recruiter contact ${index + 1} email is not in emails`);
+    const name = contact.name.trim();
+    if (!name) throw new Error(`Recruiter contact ${index + 1} name is empty`);
+    const linkedinUrl = contact.linkedinUrl ? String(contact.linkedinUrl).trim() : null;
+    if (linkedinUrl && !/^https:\/\/(www\.)?linkedin\.com\/in\//i.test(linkedinUrl)) throw new Error(`Recruiter contact ${index + 1} LinkedIn URL is invalid`);
+    return { name: name.substring(0, 120), email: email || null, status: String(contact.status || (email ? "verified" : "not found")).substring(0, 40), provider: contact.provider ? String(contact.provider).substring(0, 80) : null, linkedinUrl: linkedinUrl ? linkedinUrl.substring(0, 500) : null, location: contact.location ? String(contact.location).substring(0, 120) : null };
+  });
+}
+
+function isTransientNotionResponse(code) { return code === 408 || code === 429 || code >= 500; }
+
+function readNotionPageEmail(pageId, token) {
+  const response = UrlFetchApp.fetch(`https://api.notion.com/v1/pages/${pageId}`, getNotionOptions(token, "get"));
+  const data = parseNotionResponse(response, 200, "Notion recruiter email read error");
+  return getNotionRichTextValue(data.properties && data.properties["Email"]);
+}
+
+function readNotionPageEmailWithRetry(pageId, token) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try { return readNotionPageEmail(pageId, token); } catch (err) {
+      lastError = err;
+      if (attempt < 3) Utilities.sleep(250 * Math.pow(2, attempt - 1));
+    }
+  }
+  throw lastError || new Error("Notion recruiter email read failed");
+}
+
+function writeRecruiterEmailWithRetry(pageId, emailValue, token) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    let nonRetryable = false;
+    try {
+      const response = UrlFetchApp.fetch(`https://api.notion.com/v1/pages/${pageId}`, getNotionOptions(token, "patch", { properties: { Email: { rich_text: buildNotionRichText(emailValue) } } }));
+      const code = response.getResponseCode();
+      if (code === 200) return;
+      lastError = new Error(`Notion recruiter email update error (${code}): ${response.getContentText()}`);
+      if (!isTransientNotionResponse(code)) { nonRetryable = true; throw lastError; }
+      if (attempt === 3) throw lastError;
+    } catch (err) {
+      lastError = err;
+      if (attempt === 3 || nonRetryable) throw lastError;
+    }
+    Utilities.sleep(250 * Math.pow(2, attempt - 1));
+  }
+  throw lastError || new Error("Notion recruiter email update failed");
+}
+
+function saveRecruiterEmails(data) {
+  const authorized = getAuthorizedTailoringEntry(data);
+  const emails = normalizeRecruiterEmails(data.emails || []);
+  const emailValue = emails.join("; ");
+  const recruiterContacts = normalizeRecruiterContacts(data.contacts, emails);
+  const token = PROPERTIES.getProperty("NOTION_API_KEY");
+  if (!token) throw new Error("NOTION_API_KEY not set");
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const current = readNotionPageEmailWithRetry(authorized.entry.pageId, token);
+    // A no-result enrichment must not erase an existing verified address.
+    const targetEmail = emails.length ? emailValue : current;
+    if (current !== targetEmail) writeRecruiterEmailWithRetry(authorized.entry.pageId, targetEmail, token);
+    let verified = false;
+    let lastReadError = null;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try { verified = readNotionPageEmail(authorized.entry.pageId, token) === targetEmail; if (verified) break; } catch (err) { lastReadError = err; }
+      if (attempt < 3) Utilities.sleep(250 * Math.pow(2, attempt - 1));
+    }
+    if (!verified) throw lastReadError || new Error("Notion recruiter email read-back did not match");
+    updateNotionPage(authorized.entry.pageId, { recruiterEmail: targetEmail, recruiterEnrichment: "completed", recruiterContacts, systemState: authorized.entry.systemState, systemStateBlockId: authorized.entry.systemStateBlockId });
+    return { jobId: authorized.jobId, recruiterEnrichment: "completed", recruiters: targetEmail || null, recruiterContacts };
+  } finally { lock.releaseLock(); }
 }
 
 function saveTailoringOutreach(data) {

@@ -201,6 +201,12 @@ function buildSystemState(existingState, data) {
   if (Object.prototype.hasOwnProperty.call(data, "fitHighlights")) {
     state.fitHighlights = data.fitHighlights;
   }
+  if (Object.prototype.hasOwnProperty.call(data, "recruiterEnrichment")) {
+    state.recruiterEnrichment = data.recruiterEnrichment;
+  }
+  if (Object.prototype.hasOwnProperty.call(data, "recruiterContacts")) {
+    state.recruiterContacts = data.recruiterContacts;
+  }
 
   state.updatedAt = new Date().toISOString();
   return state;
@@ -256,6 +262,9 @@ function buildTrackerProperties(data) {
   if (Object.prototype.hasOwnProperty.call(data, "outreachDraft")) {
     properties["Outreach Draft"] = { rich_text: buildNotionRichText(data.outreachDraft) };
   }
+  if (Object.prototype.hasOwnProperty.call(data, "recruiterEmail")) {
+    properties["Email"] = { rich_text: buildNotionRichText(data.recruiterEmail || "") };
+  }
   return properties;
 }
 
@@ -273,7 +282,7 @@ function findNotionEntry(jobId) {
       property: "Job ID",
       rich_text: { equals: jobId },
     },
-    page_size: 1,
+    page_size: 100,
   };
   const response = UrlFetchApp.fetch(
     `https://api.notion.com/v1/databases/${dbId}/query`,
@@ -286,6 +295,7 @@ function findNotionEntry(jobId) {
     return null;
   }
 
+  if (data.results.length > 1 || data.has_more) throw new Error(`Multiple Notion entries found for Job ID: ${jobId}`);
   const page = data.results[0];
   const stored = readNotionSystemState(page.id, token);
   const legacyState = getLegacySystemState(page.properties);
@@ -307,6 +317,8 @@ function findNotionEntry(jobId) {
     draftDocumentId: systemState.draftDocumentId || null,
     outreachDraft: systemState.outreachDraft || null,
     fitHighlights: systemState.fitHighlights || [],
+    recruiterEnrichment: systemState.recruiterEnrichment || null,
+    recruiterContacts: systemState.recruiterContacts || [],
     systemState: hasSystemStateData(systemState) ? systemState : null,
     systemStateBlockId: stored.blockId,
     status: page.properties["Status"] && page.properties["Status"].select

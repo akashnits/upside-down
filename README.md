@@ -58,6 +58,7 @@ Everything server-side runs in one Apps Script web app. `doPost` handles each re
 | `save` | Extension | Persists a tailoring task to Notion and returns `{ jobId, agentEndpoint }`. Creates **no** Drive file. |
 | `claimTailoringTask` | Agent skill | Validates the token, marks the task claimed, and returns the analysis brief plus current Summary/Skills from the base resume. |
 | `applyTailoringPatch` | Agent skill | Copies the base resume into the job folder, applies and verifies the patch, re-scores it, and updates Notion. |
+| `saveRecruiterEmails` | Recruiter enrichment | Idempotently persists verified recruiter contacts for one Job ID and verifies the Notion read-back. |
 
 ---
 

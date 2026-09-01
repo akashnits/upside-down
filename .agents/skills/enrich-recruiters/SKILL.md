@@ -24,6 +24,8 @@ Source a small, accurate set of in-house recruiters for existing job records and
 2. Research employers in batches.
    - Use web search queries such as `site:linkedin.com/in (recruiter OR "talent acquisition" OR sourcer) "Employer" Bengaluru India`.
    - Put up to four employer queries in one web call and run another batch only when needed. Use the current search-result snippet as evidence; open an individual profile only if the snippet is ambiguous.
+   - A profile open is an optional evidence-deepening step, never a prerequisite when the search result already provides an exact direct LinkedIn URL, current employer/recruiting evidence, and location. If an open returns `aborted`, retry it up to two times; if it still aborts, mark profile inspection unavailable and continue with the sufficient search-result evidence. Do not pause provider enrichment or tracker synchronization for this optional step.
+   - Stop only when a required field (direct profile URL, current employer/recruiting evidence, or location) is missing or contradictory. In that case, run a focused replacement search before stopping.
    - Dedupe and keep at most the requested contact count per job. Record the direct profile URL, current title/evidence, employer, and location.
 
 3. Enrich emails with the bundled runner.
@@ -32,7 +34,15 @@ Source a small, accurate set of in-house recruiters for existing job records and
    - Accept only: AnyMail `email_status=valid` plus `valid_email`; Prospeo `error=false`, verified/revealed email; LeadMagic `status=valid` plus email. Reject personal, ambiguous, invalid, or company-mismatched results.
    - Report only accepted email, provider, and `verified`/`not found`/`provider unavailable` status. Keep raw provider responses in memory only.
 
-4. Synchronize Notion immediately after enrichment. This is a mandatory completion gate; do not return an intermediate result or report success before the write and verification finish.
+4. Synchronize the tracker immediately after enrichment. This is a mandatory completion gate; do not return an intermediate result or report success before the write and verification finish.
+   - When the Apps Script `endpoint` from the tailoring task reference is available, submit the verified contacts through the resume-tailor client so the backend owns the idempotent Notion write and read-back:
+     ```sh
+     node "$SKILL_ROOT/../resume-tailor/scripts/task-client.js" recruiters \
+       "<endpoint>" "<jobId>" "/tmp/<jobId>-recruiters.json"
+     ```
+     The JSON file must contain `{ "emails": ["..."], "contacts": [{ "name": "...", "email": "...", "status": "verified", "provider": "...", "linkedinUrl": "...", "location": "..." }] }`. Include contacts for not-found results too, with no email and `status: "not found"`.
+   - Treat a successful endpoint response as the synchronization and verification result. Do not perform a second Notion update through the connector.
+   - If no endpoint is available, use the direct Notion flow below with its retry and read-back requirements.
    - If no verified email is found, leave `Email` unchanged.
    - If one or more verified emails are found, replace `Email` with every accepted address in recruiter-rank order, separated by `; ` (for example, `first@company.com; second@company.com`). Do not create or update a separate contacts field.
    - On a transient connector failure, including an `aborted` result, retry the identical `Email` update up to two times. Do not repeat recruiter research or email-provider calls: reuse the verified addresses already found.
