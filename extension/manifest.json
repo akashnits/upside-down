@@ -3,7 +3,7 @@
   "name": "Upside Down - Resume Assistant",
   "version": "1.0",
   "description": "Analyze LinkedIn jobs against your resume",
-  "permissions": ["activeTab"],
+  "permissions": ["activeTab", "nativeMessaging"],
   "host_permissions": [
     "https://script.google.com/*",
     "https://script.googleusercontent.com/*"
@@ -17,7 +17,6 @@
       "js": [
         "scripts/scraper.js", 
         "scripts/ui.js", 
-        "scripts/prompt.js", 
         "scripts/styles.js", 
         "scripts/main.js"
       ]

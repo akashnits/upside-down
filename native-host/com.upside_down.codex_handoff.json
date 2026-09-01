@@ -1,0 +1,9 @@
+{
+  "name": "com.upside_down.codex_handoff",
+  "description": "Upside Down Codex handoff test host",
+  "path": "/Users/akash/Documents/personal/projects/upside-down/native-host/codex-handoff-launcher",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://jalefmlkdiklkdibgigbkdmbbcfagccg/"
+  ]
+}

@@ -1,47 +1,12 @@
 // tailoring.js — Signed task lifecycle for agent-executed resume tailoring
 
-const TAILORING_TASK_VERSION = 3;
-const TAILORING_TOKEN_TTL_MS = 4 * 60 * 60 * 1000;
+const TAILORING_TASK_VERSION = 4;
 
 function resolveJobId(data) {
   if (data && data.jobId) return String(data.jobId);
   const match = String((data && data.jobUrl) || "").match(/\/jobs\/view\/(\d+)/);
   if (match) return match[1];
   throw new Error("A LinkedIn job ID is required to prepare a tailoring task");
-}
-
-function getTaskSigningSecret() {
-  let secret = PROPERTIES.getProperty("TAILORING_TASK_SIGNING_SECRET");
-  if (!secret) {
-    secret = `${Utilities.getUuid()}-${Utilities.getUuid()}`;
-    PROPERTIES.setProperty("TAILORING_TASK_SIGNING_SECRET", secret);
-  }
-  return secret;
-}
-
-function signTaskToken(jobId, expiresAt) {
-  const payload = `${jobId}.${expiresAt}`;
-  const bytes = Utilities.computeHmacSha256Signature(payload, getTaskSigningSecret());
-  return Utilities.base64EncodeWebSafe(bytes).replace(/=+$/g, "");
-}
-
-function issueTaskToken(jobId) {
-  const expiresAt = Date.now() + TAILORING_TOKEN_TTL_MS;
-  return `${expiresAt}.${signTaskToken(jobId, expiresAt)}`;
-}
-
-function validateTaskToken(jobId, taskToken) {
-  const parts = String(taskToken || "").split(".");
-  if (parts.length !== 2) throw new Error("Invalid tailoring task token");
-
-  const expiresAt = Number(parts[0]);
-  if (!Number.isFinite(expiresAt) || expiresAt < Date.now()) {
-    throw new Error("Tailoring task token has expired. Prepare the task again from the extension.");
-  }
-
-  if (parts[1] !== signTaskToken(jobId, expiresAt)) {
-    throw new Error("Invalid tailoring task token");
-  }
 }
 
 function buildTailoringTask(data) {
@@ -95,7 +60,6 @@ function getCurrentWebAppUrl() {
 
 function getAuthorizedTailoringEntry(data) {
   const jobId = resolveJobId(data);
-  validateTaskToken(jobId, data.taskToken);
   const entry = findNotionEntry(jobId);
   if (!entry || !entry.tailoringTask) {
     throw new Error("Tailoring task not found. Prepare the task from the extension first.");
@@ -140,6 +104,26 @@ function claimTailoringTask(data) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function getTailoringStatus(data) {
+  const jobId = resolveJobId(data);
+  const entry = findNotionEntry(jobId);
+  if (!entry || !entry.tailoringTask) {
+    throw new Error("Tailoring task not found. Prepare the task from the extension first.");
+  }
+  const task = entry.tailoringTask;
+  return {
+    jobId,
+    company: task.company,
+    role: task.role,
+    status: entry.status || task.status || "Tailoring",
+    documentUrl: entry.resumeUrl || null,
+    atsScore: entry.currentScore,
+    baselineScore: entry.baselineScore,
+    completedAt: task.completedAt || null,
+    recruiterEnrichment: entry.email ? "completed" : "pending",
+  };
 }
 
 function normalizeTailoringPatch(patch) {

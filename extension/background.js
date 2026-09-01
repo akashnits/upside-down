@@ -50,7 +50,7 @@ function postToAppsScript(action, payload) {
         redirect: 'follow',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ ...payload, action })
-    }).then(response => readAppsScriptResponse(response, action === 'analyze' ? 'Analyze' : 'Save'));
+    }).then(response => readAppsScriptResponse(response, action === 'analyze' ? 'Analyze' : action === 'getTailoringStatus' ? 'Status' : 'Save'));
 }
 
 function delay(ms) {
@@ -83,14 +83,33 @@ function saveWithResponseRetry(payload) {
     return requestWithResponseRetry('save', payload, 'saveRequestId');
 }
 
+function getTailoringStatus(payload) {
+    return postToAppsScript('getTailoringStatus', payload);
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'analyze' || request.action === 'save') {
+    if (request.action === 'startTailoring') {
+        chrome.runtime.sendNativeMessage(
+            'com.upside_down.codex_handoff',
+            { action: 'startTailoring', taskReference: request.taskReference },
+            (response) => {
+                if (chrome.runtime.lastError) {
+                    sendResponse({ success: false, error: chrome.runtime.lastError.message });
+                    return;
+                }
+                sendResponse(response || { success: false, error: 'Native host returned no response' });
+            }
+        );
+        return true;
+    }
+
+    if (request.action === 'analyze' || request.action === 'save' || request.action === 'getTailoringStatus') {
         const action = request.action;
         console.log(`[Upside Down] Sending ${action} request...`);
 
         const operationPromise = action === 'analyze'
             ? analyzeWithResponseRetry(request.payload)
-            : saveWithResponseRetry(request.payload);
+            : action === 'save' ? saveWithResponseRetry(request.payload) : getTailoringStatus(request.payload);
 
         operationPromise
             .then(data => {

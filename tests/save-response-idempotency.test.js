@@ -28,7 +28,6 @@ const context = {
   buildTailoringTask: () => ({ version: 1 }),
   saveToNotion: () => { notionWrites += 1; },
   logToSheet: () => { sheetWrites += 1; },
-  issueTaskToken: () => `task-token-${++tokenIssues}`,
   getCurrentWebAppUrl: () => "https://script.google.com/macros/s/example/exec",
 };
 
@@ -57,12 +56,10 @@ assert.deepStrictEqual(firstResponse, {
   company: "Example",
   role: "Engineer",
   jobId: "4450120692",
-  taskToken: "task-token-1",
   agentEndpoint: "https://script.google.com/macros/s/example/exec",
 });
 assert.deepStrictEqual(retryResponse, firstResponse);
 assert.strictEqual(notionWrites, 1);
 assert.strictEqual(sheetWrites, 1);
-assert.strictEqual(tokenIssues, 1);
 
 console.log("save response idempotency tests passed");

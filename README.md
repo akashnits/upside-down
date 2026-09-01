@@ -55,7 +55,7 @@ Everything server-side runs in one Apps Script web app. `doPost` handles each re
 | Action | Caller | What it does |
 | --- | --- | --- |
 | `analyze` | Extension | Builds the ATS rubric, scores the resume, and returns the analysis. |
-| `save` | Extension | Persists a signed tailoring task to Notion and returns `{ jobId, taskToken, agentEndpoint }`. Creates **no** Drive file. |
+| `save` | Extension | Persists a tailoring task to Notion and returns `{ jobId, agentEndpoint }`. Creates **no** Drive file. |
 | `claimTailoringTask` | Agent skill | Validates the token, marks the task claimed, and returns the analysis brief plus current Summary/Skills from the base resume. |
 | `applyTailoringPatch` | Agent skill | Copies the base resume into the job folder, applies and verifies the patch, re-scores it, and updates Notion. |
 
@@ -70,7 +70,7 @@ Manifest V3, injected on `https://www.linkedin.com/jobs/*`.
 - **`scripts/scraper.js`** — Pulls role, company, description, and job ID out of the current job-details DOM.
 - **`scripts/main.js`** — Click handler and orchestration; drives the analyze → confirm → save flow.
 - **`scripts/ui.js`** — Floating action button, result panel, and the keyword-confirmation checkboxes.
-- **`scripts/prompt.js`** — Builds the compact agent dispatch prompt that gets copied to your clipboard.
+- **`scripts/main.js`** — Starts the native Codex handoff after saving the tailoring task.
 - **`scripts/styles.js`** — Inline style constants.
 - **`background.js`** — Service worker; the fetch "tunnel" that bypasses LinkedIn's CSP. Reads `GAS_URL` from `config.js`.
 
@@ -214,7 +214,6 @@ Then, in the Apps Script editor, add your **Script Properties** under **Project 
 | `PROVIDER` | — | Overrides `CONFIG.PROVIDER` (`OPENAI` / `GEMINI` / `NVIDIA`) |
 | `SHEET_ID` | — | Google Sheet ID for secondary logging |
 | `GITHUB_TOKEN` | — | PAT with `gist` scope, for the optional Gist export |
-| `TAILORING_TASK_SIGNING_SECRET` | 🔒 auto | Generated on first task creation. Do not set by hand. |
 
 Finally, publish the web app: **Deploy → Manage deployments → ✏️ → Web app**, with:
 

@@ -26,7 +26,7 @@ vm.runInContext(fs.readFileSync("google-apps-script/router.js", "utf8"), context
 
 const requestId = "4f5d2a01-0279-4f4f-b0ab-9c01d44eab42";
 const analysisResponse = { success: true, analysis: { atsScore: 42, decision: "APPLY" } };
-const saveResponse = { success: true, jobId: "4450120692", taskToken: "task-token" };
+const saveResponse = { success: true, jobId: "4450120692" };
 
 assert.strictEqual(context.getCachedResponse("analysis", requestId), null);
 context.cacheResponse("analysis", requestId, analysisResponse);

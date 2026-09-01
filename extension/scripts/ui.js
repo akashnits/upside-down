@@ -215,10 +215,10 @@ function createPanel() {
 
             result.innerHTML = `
                 ${renderAnalysisScan(analysis)}
-                <div style="font-size:12px; color:#6b7280; margin:-4px 0 16px;">Your confirmed experience and full tailoring brief will be included in the prompt.</div>
+                <div style="font-size:12px; color:#6b7280; margin:-4px 0 16px;">Your confirmed experience and tailoring brief will be sent to Codex.</div>
                 <div style="display:flex; gap:10px; padding-bottom:20px;">
                     <button id="ud-save" style="flex:1; background:#0A66C2; color:white; border:none; padding:12px; border-radius:8px; cursor:pointer; font-weight:600; font-size:14px; transition:background 0.2s;"
-                        onmouseover="this.style.background='#084e96'" onmouseout="this.style.background='#0A66C2'">Create tailoring prompt</button>
+                        onmouseover="this.style.background='#084e96'" onmouseout="this.style.background='#0A66C2'">Tailor &amp; save</button>
                     <button id="ud-discard" style="flex:1; background:#f3f4f6; color:#374151; border:none; padding:12px; border-radius:8px; cursor:pointer; font-size:14px; transition:background 0.2s;"
                         onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='#f3f4f6'">Discard</button>
                 </div>
@@ -247,7 +247,7 @@ function createPanel() {
             const messages = [
                 "Saving to Notion...",
                 "Preparing tailoring task...",
-                "Generating skill dispatch..."
+                "Starting Codex..."
             ];
 
             result.innerHTML = `
@@ -271,50 +271,37 @@ function createPanel() {
             }, 1500);
         },
 
-        showSuccess: (promptText) => {
+        showSuccess: (details) => {
             if (window.udSaveInterval) clearInterval(window.udSaveInterval);
 
             const result = document.getElementById('ud-result');
             result.innerHTML = `
                 <div style="text-align:center; padding:20px 20px 10px;">
-                    <div style="font-size:40px; margin-bottom:10px;">🎉</div>
-                    <h3 style="margin:0 0 10px 0; color:#155724;">Tailoring task ready</h3>
-                    <div style="color:#666; font-size:13px; margin-bottom:15px;">Paste this into your agent. It creates the draft only when work starts.</div>
+                    <div style="font-size:40px; margin-bottom:10px;">✅</div>
+                    <h3 style="margin:0 0 10px 0; color:#155724;">Tailoring started in Codex</h3>
+                    <div data-ud-tailoring-status style="color:#666; font-size:13px; margin-bottom:15px;">${details.alreadyStarted ? 'This task was already running.' : 'The resume-tailor skill is working in the background.'}</div>
+                    <div data-ud-tailoring-link style="font-size:13px;"></div>
                 </div>
                 
-                <div style="position:relative; background:#f8f9fa; border:1px solid #e5e7eb; border-radius:8px; padding:16px; margin:0 0 20px 0; text-align:left;">
-                    <button id="ud-copy-prompt" style="position:absolute; top:8px; right:8px; background:white; border:1px solid #d1d5db; border-radius:4px; width:28px; height:28px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#6b7280; transition:all 0.15s;" title="Copy to clipboard">
-                        <svg id="ud-icon-copy" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                        </svg>
-                        <svg id="ud-icon-check" style="display:none;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="20 6 9 17 4 12"></polyline>
-                        </svg>
-                    </button>
-                    <pre style="margin:0; font-family:Menlo, Monaco, Consolas, monospace; font-size:12px; line-height:1.5; color:#1f2937; white-space:pre-wrap; word-wrap:break-word; padding-top:8px; padding-right:36px;">${promptText}</pre>
-                </div>
             `;
+        },
 
-            document.getElementById('ud-copy-prompt').addEventListener('click', function() {
-                navigator.clipboard.writeText(promptText).then(() => {
-                    const btn = this;
-                    const iconCopy = document.getElementById('ud-icon-copy');
-                    const iconCheck = document.getElementById('ud-icon-check');
-                    
-                    iconCopy.style.display = 'none';
-                    iconCheck.style.display = 'block';
-                    btn.style.color = '#10b981';
-                    btn.style.borderColor = '#10b981';
-                    
-                    setTimeout(() => {
-                        iconCopy.style.display = 'block';
-                        iconCheck.style.display = 'none';
-                        btn.style.color = '#6b7280';
-                        btn.style.borderColor = '#d1d5db';
-                    }, 2000);
-                });
+        watchTailoringStatus: (jobId) => {
+            if (window.udTailoringStatusInterval) clearInterval(window.udTailoringStatusInterval);
+            const poll = () => chrome.runtime.sendMessage({ action: 'getTailoringStatus', payload: { jobId } }, response => {
+                if (!response?.success) return;
+                const done = response.status === 'To Review' || response.status === 'Completed';
+                const result = document.getElementById('ud-result');
+                if (!result) return;
+                const status = done ? `Tailoring complete. ATS score: ${response.atsScore ?? 'n/a'}` : `Tailoring status: ${response.status}`;
+                const link = response.documentUrl ? ` <a href="${response.documentUrl}" target="_blank">Open resume</a>` : '';
+                result.querySelector('[data-ud-tailoring-status]')?.replaceChildren(document.createTextNode(status));
+                const linkEl = result.querySelector('[data-ud-tailoring-link]');
+                if (linkEl) linkEl.innerHTML = link;
+                if (done) clearInterval(window.udTailoringStatusInterval);
             });
+            poll();
+            window.udTailoringStatusInterval = setInterval(poll, 3000);
         },
 
         showError: (msg) => {

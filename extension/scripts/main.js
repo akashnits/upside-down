@@ -72,17 +72,28 @@
                     payload: { ...jobData, analysis: analysisForCreate }
                 }, (saveResponse) => {
                     if (saveResponse?.success) {
-                        // Assemble compact agent-skill dispatch prompt.
-                        const promptText = buildCoworkPrompt(saveResponse);
-
-                        // Copy to clipboard
-                        navigator.clipboard.writeText(promptText).then(() => {
-                            console.log('[Upside Down] Copied Cowork prompt to clipboard.');
-                        }).catch(err => {
-                            console.error('[Upside Down] Failed to copy to clipboard:', err);
+                        chrome.runtime.sendMessage({
+                            action: 'startTailoring',
+                            taskReference: {
+                                company: saveResponse.company,
+                                role: saveResponse.role,
+                                agentEndpoint: saveResponse.agentEndpoint,
+                                jobId: saveResponse.jobId,
+                            }
+                        }, tailoringResponse => {
+                            if (chrome.runtime.lastError || !tailoringResponse?.success) {
+                                const error = chrome.runtime.lastError?.message || tailoringResponse?.error || 'Could not start Codex';
+                                console.error('[Upside Down] Codex handoff failed:', error);
+                                panel.showError(`Task saved, but Codex could not be started: ${error}`);
+                                return;
+                            }
+                            panel.showSuccess({
+                                alreadyStarted: tailoringResponse.alreadyStarted === true
+                            });
+                            if (tailoringResponse.success) {
+                                panel.watchTailoringStatus(saveResponse.jobId);
+                            }
                         });
-
-                        panel.showSuccess(promptText);
                     } else {
                         panel.showError(saveResponse?.error || 'Save failed');
                     }

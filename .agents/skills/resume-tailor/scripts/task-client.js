@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 
-const [command, endpoint, jobId, taskToken, patchPath] = process.argv.slice(2);
+const [command, endpoint, jobId, patchPath] = process.argv.slice(2);
 const actions = {
   claim: "claimTailoringTask",
   apply: "applyTailoringPatch",
 };
 
-if (!actions[command] || !endpoint || !jobId || !taskToken || (command === "apply" && !patchPath)) {
-  console.error("Usage: task-client.js <claim|apply> <endpoint> <jobId> <taskToken> [patchPath]");
+if (!actions[command] || !endpoint || !jobId || (command === "apply" && !patchPath)) {
+  console.error("Usage: task-client.js <claim|apply> <endpoint> <jobId> [patchPath]");
   process.exit(1);
 }
 
@@ -28,7 +28,6 @@ async function run() {
     body: JSON.stringify({
       action: actions[command],
       jobId,
-      taskToken,
       ...(patch ? { patch } : {}),
     }),
   });

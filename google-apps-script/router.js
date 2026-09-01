@@ -210,7 +210,6 @@ function doPost(e) {
         company: data.company || "Unknown",
         role: data.role || "Unknown",
         jobId: data.jobId,
-        taskToken: issueTaskToken(data.jobId),
         agentEndpoint: getCurrentWebAppUrl(),
       };
       cacheResponse("save", requestId, response);
@@ -220,6 +219,10 @@ function doPost(e) {
     // --- AGENT ACTION: CLAIM TASK AND READ CURRENT EDITABLE BASE CONTENT ---
     if (action === "claimTailoringTask") {
       return jsonOutput({ success: true, ...claimTailoringTask(data) });
+    }
+
+    if (action === "getTailoringStatus") {
+      return jsonOutput({ success: true, ...getTailoringStatus(data) });
     }
 
     // --- AGENT ACTION: COPY BASE, APPLY PATCH, VERIFY, RESCORE, AND PERSIST ---

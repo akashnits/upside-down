@@ -6,7 +6,7 @@ description: Execute an Upside Down resume-tailoring task through the Base Resum
 # Resume Tailor
 
 Use this skill only when the user provides an Upside Down task reference with
-`endpoint`, `jobId`, and `taskToken`.
+`endpoint` and `jobId`.
 
 Set `SKILL_ROOT` once before running commands. Prefer the global installation;
 fall back to the checked-in project skill when working in this repository:
@@ -34,7 +34,7 @@ Only stop and report the error if the permission-backed retry also fails.
 
    ```sh
    node "$SKILL_ROOT/scripts/task-client.js" claim \
-     "<endpoint>" "<jobId>" "<taskToken>"
+     "<endpoint>" "<jobId>"
    ```
 
 2. Read the returned `task`. `task.analysisBrief` is the source of truth for
@@ -75,7 +75,7 @@ Only stop and report the error if the permission-backed retry also fails.
 
    ```sh
    node "$SKILL_ROOT/scripts/task-client.js" apply \
-     "<endpoint>" "<jobId>" "<taskToken>" "/tmp/<jobId>-patch.json"
+     "<endpoint>" "<jobId>" "/tmp/<jobId>-patch.json"
    ```
 
 The response includes the finalized Google Doc URL and ATS score. The backend
