@@ -158,7 +158,6 @@ function saveTailoringOutreach(data) {
   }
   updateNotionPage(authorized.entry.pageId, {
     outreachDraft: outreach.email.trim(),
-    fitHighlights,
     systemState: authorized.entry.systemState,
     systemStateBlockId: authorized.entry.systemStateBlockId,
   });

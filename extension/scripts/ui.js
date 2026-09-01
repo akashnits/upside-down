@@ -310,7 +310,7 @@ function createPanel() {
                     const changes = terms.length ? terms.join(', ') : 'Summary and Skills refined';
                     const recruiters = response.recruiters || 'No recruiter email found yet';
                     const details = result.querySelector('[data-ud-tailoring-details]');
-                    const outreach = response.outreachDraft ? `<div><b>Cold email</b><br><span style="white-space:pre-wrap;">${response.outreachDraft}</span></div>` : '';
+                    const outreach = response.outreachDraft ? `<div><b>Cold email</b><div style="white-space:pre-wrap; margin-top:5px; padding:10px; background:#f8f9fa; border-left:3px solid #0A66C2;">${response.outreachDraft}</div></div>` : '';
                     if (details) details.innerHTML = `<div><b>ATS improvement</b><br>${delta}</div><div><b>What changed</b><br>${changes}</div>${outreach}<div><b>Recruiters</b><br><span style="white-space:pre-wrap;">${recruiters}</span></div>`;
                 }
                 if (done) {

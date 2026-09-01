@@ -79,14 +79,19 @@ Only stop and report the error if the permission-backed retry also fails.
    ```
 
 6. After `apply` succeeds, draft a concise, evidence-backed cold email using
-   the finalized resume and JD. Keep it under 70 words, include 1-3 short fit
-   highlights, and end with a PS asking the recipient to forward you to the
-   right person if they are not the recruiter for the role. Save it as
+   the finalized resume and JD. Lead with the most relevant role-specific
+   experience, not generic total years of experience. Connect one concrete,
+   verified achievement or capability to the JD's most important requirement.
+   Keep it under 70 words before the sign-off and PS, include 1-3 short fit
+   highlights, and end with a separate PS asking the recipient to forward you
+   to the right person if they are not the recruiter for the role. Format it
+   as plain text with blank lines between greeting, body, sign-off, and PS;
+   do not use markdown bullets or a subject line. Save it as
    `/tmp/<jobId>-outreach.json`:
 
    ```json
    {
-     "email": "Hi [Name], ...",
+     "email": "Hi [Name],\n\nI’m interested ...\n\nBest,\nAkash\n\nP.S. If you’re not the recruiter ...",
      "fitHighlights": ["distributed systems", "Kafka platforms", "AWS backend"]
    }
    ```

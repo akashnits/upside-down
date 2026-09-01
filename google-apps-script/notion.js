@@ -253,6 +253,9 @@ function buildTrackerProperties(data) {
   }
   if (data.status) properties["Status"] = { select: { name: data.status } };
   if (data.resumeUrl) properties["Resume Link"] = { url: data.resumeUrl };
+  if (Object.prototype.hasOwnProperty.call(data, "outreachDraft")) {
+    properties["Outreach Draft"] = { rich_text: buildNotionRichText(data.outreachDraft) };
+  }
   return properties;
 }
 
@@ -294,6 +297,7 @@ function findNotionEntry(jobId) {
     pageId: page.id,
     resumeUrl: (resumeLink && resumeLink.url) || null,
     recruiterEmail: getNotionRichTextValue(page.properties["Email"]) || (page.properties["Email"] && page.properties["Email"].email) || null,
+    outreachDraft: getNotionRichTextValue(page.properties["Outreach Draft"]) || systemState.outreachDraft || null,
     rubric: systemState.rubric || null,
     rubricVersion: systemState.rubricVersion || null,
     jdHash: systemState.jdHash || null,
