@@ -29,7 +29,12 @@ Source a small, accurate set of in-house recruiters for existing job records and
    - Dedupe and keep at most the requested contact count per job. Record the direct profile URL, current title/evidence, employer, and location.
 
 3. Enrich emails with the bundled runner.
-   - Check `ANYMAIL_FINDER_API_KEY`, `PROSPEO_API_KEY`, and `LEADMAGIC_API_KEY` once without printing values. If none is set, mark email status `provider unavailable` and stop enrichment.
+   - Before checking provider credentials or running the runner, load the repository-root `.env.local` when it exists so its values are exported to the runner process, without printing values:
+     ```sh
+     if [ -f .env.local ]; then set -a; source .env.local; set +a; fi
+     ```
+     Do this in the same shell invocation as the credential check and `enrich_emails.py` command. A shell variable that is set but not exported is not visible to the Python runner.
+   - Check `ANYMAIL_FINDER_API_KEY`, `PROSPEO_API_KEY`, and `LEADMAGIC_API_KEY` once without printing values. If none is set after the optional `.env.local` load, mark email status `provider unavailable` and stop enrichment.
    - When any key is available, read [the provider reference](references/email-provider-api.md), then pass all recruiter records to `scripts/enrich_emails.py` through stdin. The runner batches requests concurrently by stage: AnyMail Finder for all profiles, Prospeo for AnyMail misses, and LeadMagic for remaining misses. Do not hand-roll shell loops.
    - Accept only: AnyMail `email_status=valid` plus `valid_email`; Prospeo `error=false`, verified/revealed email; LeadMagic `status=valid` plus email. Reject personal, ambiguous, invalid, or company-mismatched results.
    - Report only accepted email, provider, and `verified`/`not found`/`provider unavailable` status. Keep raw provider responses in memory only.
