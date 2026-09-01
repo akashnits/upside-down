@@ -287,6 +287,7 @@ function findNotionEntry(jobId) {
   return {
     pageId: page.id,
     resumeUrl: (resumeLink && resumeLink.url) || null,
+    recruiterEmail: getNotionRichTextValue(page.properties["Email"]) || (page.properties["Email"] && page.properties["Email"].email) || null,
     rubric: systemState.rubric || null,
     rubricVersion: systemState.rubricVersion || null,
     jdHash: systemState.jdHash || null,

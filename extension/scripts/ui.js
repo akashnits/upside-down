@@ -281,6 +281,7 @@ function createPanel() {
                     <h3 style="margin:0 0 10px 0; color:#155724;">Tailoring started in Codex</h3>
                     <div data-ud-tailoring-status style="color:#666; font-size:13px; margin-bottom:15px;">${details.alreadyStarted ? 'This task was already running.' : 'The resume-tailor skill is working in the background.'}</div>
                     <div data-ud-tailoring-link style="font-size:13px;"></div>
+                    <div data-ud-tailoring-details style="display:grid; gap:10px; text-align:left; color:#374151; font-size:13px; line-height:1.4; margin-top:15px;"></div>
                 </div>
                 
             `;
@@ -298,6 +299,16 @@ function createPanel() {
                 result.querySelector('[data-ud-tailoring-status]')?.replaceChildren(document.createTextNode(status));
                 const linkEl = result.querySelector('[data-ud-tailoring-link]');
                 if (linkEl) linkEl.innerHTML = link;
+                if (done) {
+                    const delta = response.scoreDelta === null || response.scoreDelta === undefined
+                        ? 'No baseline available'
+                        : `${response.scoreDelta >= 0 ? '+' : ''}${response.scoreDelta} points`;
+                    const terms = [...(response.changes?.confirmedKeywords || []), ...(response.changes?.exactTerms || [])];
+                    const changes = terms.length ? terms.join(', ') : 'Summary and Skills refined';
+                    const recruiters = response.recruiters || 'No recruiter email found yet';
+                    const details = result.querySelector('[data-ud-tailoring-details]');
+                    if (details) details.innerHTML = `<div><b>ATS improvement</b><br>${delta}</div><div><b>What changed</b><br>${changes}</div><div><b>Recruiters</b><br>${recruiters}</div>`;
+                }
                 if (done) clearInterval(window.udTailoringStatusInterval);
             });
             poll();

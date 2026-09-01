@@ -113,6 +113,9 @@ function getTailoringStatus(data) {
     throw new Error("Tailoring task not found. Prepare the task from the extension first.");
   }
   const task = entry.tailoringTask;
+  const selections = task.analysisBrief && task.analysisBrief.userSelections || {};
+  const confirmedKeywords = selections.confirmedKeywords || [];
+  const literalizeKeywords = selections.literalizeKeywords || [];
   return {
     jobId,
     company: task.company,
@@ -121,8 +124,17 @@ function getTailoringStatus(data) {
     documentUrl: entry.resumeUrl || null,
     atsScore: entry.currentScore,
     baselineScore: entry.baselineScore,
+    scoreDelta: entry.currentScore !== null && entry.baselineScore !== null
+      ? entry.currentScore - entry.baselineScore
+      : null,
+    changes: {
+      sections: ["Professional Summary", "Skills"],
+      confirmedKeywords,
+      exactTerms: literalizeKeywords,
+    },
     completedAt: task.completedAt || null,
-    recruiterEnrichment: entry.email ? "completed" : "pending",
+    recruiterEnrichment: entry.recruiterEmail ? "completed" : "pending",
+    recruiters: entry.recruiterEmail,
   };
 }
 
