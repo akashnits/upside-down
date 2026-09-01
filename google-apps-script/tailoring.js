@@ -135,7 +135,34 @@ function getTailoringStatus(data) {
     completedAt: task.completedAt || null,
     recruiterEnrichment: entry.recruiterEmail ? "completed" : "pending",
     recruiters: entry.recruiterEmail,
+    outreachDraft: entry.outreachDraft,
+    fitHighlights: entry.fitHighlights,
   };
+}
+
+function saveTailoringOutreach(data) {
+  const authorized = getAuthorizedTailoringEntry(data);
+  const outreach = data.outreach;
+  if (!outreach || typeof outreach !== "object" || Array.isArray(outreach)) {
+    throw new Error("Outreach draft must be an object");
+  }
+  if (typeof outreach.email !== "string" || !outreach.email.trim() || outreach.email.length > 1200) {
+    throw new Error("Outreach draft must include a concise email");
+  }
+  if (!Array.isArray(outreach.fitHighlights) || outreach.fitHighlights.length < 1 || outreach.fitHighlights.length > 3) {
+    throw new Error("Outreach draft must include 1 to 3 fit highlights");
+  }
+  const fitHighlights = outreach.fitHighlights.map(value => String(value).trim()).filter(Boolean);
+  if (fitHighlights.length !== outreach.fitHighlights.length || fitHighlights.some(value => value.length > 80)) {
+    throw new Error("Each fit highlight must be a non-empty phrase under 80 characters");
+  }
+  updateNotionPage(authorized.entry.pageId, {
+    outreachDraft: outreach.email.trim(),
+    fitHighlights,
+    systemState: authorized.entry.systemState,
+    systemStateBlockId: authorized.entry.systemStateBlockId,
+  });
+  return { jobId: authorized.jobId, outreachDraft: outreach.email.trim(), fitHighlights };
 }
 
 function normalizeTailoringPatch(patch) {

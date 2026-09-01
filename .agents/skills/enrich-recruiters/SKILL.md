@@ -35,7 +35,9 @@ Source a small, accurate set of in-house recruiters for existing job records and
 4. Synchronize Notion immediately after enrichment. This is a mandatory completion gate; do not return an intermediate result or report success before the write and verification finish.
    - If no verified email is found, leave `Email` unchanged.
    - If one or more verified emails are found, replace `Email` with every accepted address in recruiter-rank order, separated by `; ` (for example, `first@company.com; second@company.com`). Do not create or update a separate contacts field.
-   - Fetch the selected page directly after writing to verify the saved `Email` value. Do not rely on an immediately repeated SQL query, which may be stale.
+   - On a transient connector failure, including an `aborted` result, retry the identical `Email` update up to two times. Do not repeat recruiter research or email-provider calls: reuse the verified addresses already found.
+   - After a successful write, fetch the selected page directly and verify that its `Email` value exactly equals the normalized, semicolon-separated addresses submitted. Do not rely on an immediately repeated SQL query, which may be stale.
+   - If a direct fetch is interrupted or does not yet show the submitted value, retry the fetch twice. If the write or any read-back retry still fails, report enrichment as incomplete with the final error and the verified-but-unsaved address(es).
    - If the update or verification fails, report enrichment as incomplete with the exact failure reason; never claim success based only on provider output.
 
 ## Compact invocation

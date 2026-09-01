@@ -4,15 +4,16 @@ const [command, endpoint, jobId, patchPath] = process.argv.slice(2);
 const actions = {
   claim: "claimTailoringTask",
   apply: "applyTailoringPatch",
+  outreach: "saveTailoringOutreach",
 };
 
 if (!actions[command] || !endpoint || !jobId || (command === "apply" && !patchPath)) {
-  console.error("Usage: task-client.js <claim|apply> <endpoint> <jobId> [patchPath]");
+  console.error("Usage: task-client.js <claim|apply|outreach> <endpoint> <jobId> [filePath]");
   process.exit(1);
 }
 
 let patch;
-if (command === "apply") {
+if (command === "apply" || command === "outreach") {
   try {
     patch = JSON.parse(require("fs").readFileSync(patchPath, "utf8"));
   } catch (error) {
@@ -28,7 +29,7 @@ async function run() {
     body: JSON.stringify({
       action: actions[command],
       jobId,
-      ...(patch ? { patch } : {}),
+      ...(command === "apply" ? { patch } : { outreach: patch }),
     }),
   });
   const text = await response.text();

@@ -294,7 +294,7 @@ function createPanel() {
             if (previousPoller) clearInterval(previousPoller);
             const poll = () => chrome.runtime.sendMessage({ action: 'getTailoringStatus', payload: { jobId } }, response => {
                 if (!response?.success) return;
-                const done = response.status === 'To Review' || response.status === 'Completed';
+                const done = (response.status === 'To Review' || response.status === 'Completed') && Boolean(response.outreachDraft);
                 const result = panel.querySelector('#ud-result');
                 if (!result) return;
                 const status = done ? `Tailoring complete. ATS score: ${response.atsScore ?? 'n/a'}` : `Tailoring status: ${response.status}`;
@@ -310,7 +310,8 @@ function createPanel() {
                     const changes = terms.length ? terms.join(', ') : 'Summary and Skills refined';
                     const recruiters = response.recruiters || 'No recruiter email found yet';
                     const details = result.querySelector('[data-ud-tailoring-details]');
-                    if (details) details.innerHTML = `<div><b>ATS improvement</b><br>${delta}</div><div><b>What changed</b><br>${changes}</div><div><b>Recruiters</b><br>${recruiters}</div>`;
+                    const outreach = response.outreachDraft ? `<div><b>Cold email</b><br><span style="white-space:pre-wrap;">${response.outreachDraft}</span></div>` : '';
+                    if (details) details.innerHTML = `<div><b>ATS improvement</b><br>${delta}</div><div><b>What changed</b><br>${changes}</div>${outreach}<div><b>Recruiters</b><br><span style="white-space:pre-wrap;">${recruiters}</span></div>`;
                 }
                 if (done) {
                     clearInterval(tailoringPollers.get(String(jobId)));

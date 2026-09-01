@@ -78,7 +78,28 @@ Only stop and report the error if the permission-backed retry also fails.
      "<endpoint>" "<jobId>" "/tmp/<jobId>-patch.json"
    ```
 
-The response includes the finalized Google Doc URL and ATS score. The backend
+6. After `apply` succeeds, draft a concise, evidence-backed cold email using
+   the finalized resume and JD. Keep it under 70 words, include 1-3 short fit
+   highlights, and end with a PS asking the recipient to forward you to the
+   right person if they are not the recruiter for the role. Save it as
+   `/tmp/<jobId>-outreach.json`:
+
+   ```json
+   {
+     "email": "Hi [Name], ...",
+     "fitHighlights": ["distributed systems", "Kafka platforms", "AWS backend"]
+   }
+   ```
+
+   Use the exact evidence from the finalized resume; do not invent metrics or
+   experience. Submit it with:
+
+   ```sh
+   node "$SKILL_ROOT/scripts/task-client.js" outreach \
+     "<endpoint>" "<jobId>" "/tmp/<jobId>-outreach.json"
+   ```
+
+The `apply` response includes the finalized Google Doc URL and ATS score. The backend
 verifies the submitted Summary and Skills against the copied Base Resume,
 re-scores it with the saved rubric, and updates Notion.
 Report its document URL and score to the user. For backend lifecycle errors,

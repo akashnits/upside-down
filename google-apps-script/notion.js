@@ -195,6 +195,12 @@ function buildSystemState(existingState, data) {
   if (Object.prototype.hasOwnProperty.call(data, "draftDocumentId")) {
     state.draftDocumentId = data.draftDocumentId;
   }
+  if (Object.prototype.hasOwnProperty.call(data, "outreachDraft")) {
+    state.outreachDraft = data.outreachDraft;
+  }
+  if (Object.prototype.hasOwnProperty.call(data, "fitHighlights")) {
+    state.fitHighlights = data.fitHighlights;
+  }
 
   state.updatedAt = new Date().toISOString();
   return state;
@@ -296,6 +302,8 @@ function findNotionEntry(jobId) {
     tailoringTask: systemState.tailoringTask || null,
     draftFolderId: systemState.draftFolderId || null,
     draftDocumentId: systemState.draftDocumentId || null,
+    outreachDraft: systemState.outreachDraft || null,
+    fitHighlights: systemState.fitHighlights || [],
     systemState: hasSystemStateData(systemState) ? systemState : null,
     systemStateBlockId: stored.blockId,
     status: page.properties["Status"] && page.properties["Status"].select

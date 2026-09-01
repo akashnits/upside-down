@@ -36,7 +36,7 @@ function fail(error) {
     codex?.kill('SIGTERM');
 }
 function buildPrompt(task) {
-    return `Use the resume-tailor skill to execute this tailoring task. Do not create a resume draft before invoking the skill. The skill will fetch the task and submit only a Summary/Skills patch. The backend will copy the canonical base resume into the job folder, apply and verify the patch, then rescore and update Notion.\n\nAfter resume-tailor completes successfully and returns the finalized document URL and ATS score, run the enrich-recruiters skill. Pass it this exact saved Job ID: ${task.jobId}. Enrichment is a required sequential follow-up: do not start it before resume-tailor succeeds. Process only that exact row in the Upside Down Notion database and update recruiter email information according to the skill instructions. If enrichment cannot complete, report the reason after reporting the tailoring result.\n\nTask reference:\n${JSON.stringify({ company: task.company, role: task.role, endpoint: task.agentEndpoint, jobId: task.jobId }, null, 2)}`;
+    return `Use the resume-tailor skill to execute this tailoring task. Do not create a resume draft before invoking the skill. The skill will fetch the task and submit only a Summary/Skills patch. The backend will copy the canonical base resume into the job folder, apply and verify the patch, then rescore and update Notion. After apply succeeds, follow the skill instructions to draft and save the concise evidence-backed outreach email before running enrich-recruiters. Then run enrich-recruiters with this exact saved Job ID: ${task.jobId}.\n\nTask reference:\n${JSON.stringify({ company: task.company, role: task.role, endpoint: task.agentEndpoint, jobId: task.jobId }, null, 2)}`;
 }
 
 let task;
