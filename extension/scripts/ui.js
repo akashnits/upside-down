@@ -10,6 +10,10 @@ function escapeHtml(value) {
         .replace(/'/g, '&#039;');
 }
 
+// Each tailoring job owns its polling timer. This allows multiple jobs to run
+// and report status concurrently instead of sharing one global interval.
+const tailoringPollers = new Map();
+
 function renderAnalysisScan(analysis) {
     const brief = analysis.tailoringBrief || analysis.analysisBrief || {};
     const ats = brief.ats || {};
@@ -123,12 +127,10 @@ function renderAnalysisScan(analysis) {
 }
 
 function createPanel() {
-    // Remove existing panel if present
-    const existing = document.getElementById('upside-down-panel');
-    if (existing) existing.remove();
-
     const panel = document.createElement('div');
-    panel.id = 'upside-down-panel';
+    let loadingInterval = null;
+    let saveInterval = null;
+    panel.id = `upside-down-panel-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     panel.style.cssText = `
         position: fixed;
         top: 0;
@@ -168,14 +170,14 @@ function createPanel() {
         setTimeout(() => panel.remove(), 300);
     };
 
-    document.getElementById('ud-close').onclick = closePanel;
+    panel.querySelector('#ud-close').onclick = closePanel;
 
     return {
         setLoading: () => {
-            document.getElementById('ud-header').style.display = 'flex';
-            const status = document.getElementById('ud-status');
+            panel.querySelector('#ud-header').style.display = 'flex';
+            const status = panel.querySelector('#ud-status');
             status.style.display = 'flex';
-            document.getElementById('ud-result').style.display = 'none';
+            panel.querySelector('#ud-result').style.display = 'none';
 
             const messages = [
                 'Analyzing job description...',
@@ -197,20 +199,20 @@ function createPanel() {
             `;
 
             let msgIndex = 0;
-            const msgEl = document.getElementById('ud-loading-msg');
+            const msgEl = panel.querySelector('#ud-loading-msg');
             msgEl.textContent = messages[0];
 
-            window.udLoadingInterval = setInterval(() => {
+            loadingInterval = setInterval(() => {
                 msgIndex = (msgIndex + 1) % messages.length;
                 msgEl.textContent = messages[msgIndex];
             }, 2000);
         },
 
         showResult: (analysis, onSave) => {
-            if (window.udLoadingInterval) clearInterval(window.udLoadingInterval);
+            if (loadingInterval) clearInterval(loadingInterval);
 
-            document.getElementById('ud-status').style.display = 'none';
-            const result = document.getElementById('ud-result');
+            panel.querySelector('#ud-status').style.display = 'none';
+            const result = panel.querySelector('#ud-result');
             result.style.display = 'block';
 
             result.innerHTML = `
@@ -224,9 +226,9 @@ function createPanel() {
                 </div>
             `;
 
-            document.getElementById('ud-save').onclick = () => {
-                const confirmationInputs = Array.from(document.querySelectorAll('.ud-confirm-keyword'));
-                const literalizationInputs = Array.from(document.querySelectorAll('.ud-literalize-keyword'));
+            panel.querySelector('#ud-save').onclick = () => {
+                const confirmationInputs = Array.from(panel.querySelectorAll('.ud-confirm-keyword'));
+                const literalizationInputs = Array.from(panel.querySelectorAll('.ud-literalize-keyword'));
                 const confirmedKeywords = confirmationInputs
                     .filter(input => input.checked)
                     .map(input => input.value);
@@ -239,11 +241,11 @@ function createPanel() {
 
                 onSave({ confirmedKeywords, excludedKeywords, literalizeKeywords });
             };
-            document.getElementById('ud-discard').onclick = closePanel;
+            panel.querySelector('#ud-discard').onclick = closePanel;
         },
 
         setSaveLoading: () => {
-            const result = document.getElementById('ud-result');
+            const result = panel.querySelector('#ud-result');
             const messages = [
                 "Saving to Notion...",
                 "Preparing tailoring task...",
@@ -262,19 +264,19 @@ function createPanel() {
             `;
 
             let msgIndex = 0;
-            const msgEl = document.getElementById('ud-save-msg');
+            const msgEl = panel.querySelector('#ud-save-msg');
             msgEl.textContent = messages[0];
 
-            window.udSaveInterval = setInterval(() => {
+            saveInterval = setInterval(() => {
                 msgIndex = (msgIndex + 1) % messages.length;
                 msgEl.textContent = messages[msgIndex];
             }, 1500);
         },
 
         showSuccess: (details) => {
-            if (window.udSaveInterval) clearInterval(window.udSaveInterval);
+            if (saveInterval) clearInterval(saveInterval);
 
-            const result = document.getElementById('ud-result');
+            const result = panel.querySelector('#ud-result');
             result.innerHTML = `
                 <div style="text-align:center; padding:20px 20px 10px;">
                     <div style="font-size:40px; margin-bottom:10px;">✅</div>
@@ -288,11 +290,12 @@ function createPanel() {
         },
 
         watchTailoringStatus: (jobId) => {
-            if (window.udTailoringStatusInterval) clearInterval(window.udTailoringStatusInterval);
+            const previousPoller = tailoringPollers.get(String(jobId));
+            if (previousPoller) clearInterval(previousPoller);
             const poll = () => chrome.runtime.sendMessage({ action: 'getTailoringStatus', payload: { jobId } }, response => {
                 if (!response?.success) return;
                 const done = response.status === 'To Review' || response.status === 'Completed';
-                const result = document.getElementById('ud-result');
+                const result = panel.querySelector('#ud-result');
                 if (!result) return;
                 const status = done ? `Tailoring complete. ATS score: ${response.atsScore ?? 'n/a'}` : `Tailoring status: ${response.status}`;
                 const link = response.documentUrl ? ` <a href="${response.documentUrl}" target="_blank">Open resume</a>` : '';
@@ -309,24 +312,27 @@ function createPanel() {
                     const details = result.querySelector('[data-ud-tailoring-details]');
                     if (details) details.innerHTML = `<div><b>ATS improvement</b><br>${delta}</div><div><b>What changed</b><br>${changes}</div><div><b>Recruiters</b><br>${recruiters}</div>`;
                 }
-                if (done) clearInterval(window.udTailoringStatusInterval);
+                if (done) {
+                    clearInterval(tailoringPollers.get(String(jobId)));
+                    tailoringPollers.delete(String(jobId));
+                }
             });
             poll();
-            window.udTailoringStatusInterval = setInterval(poll, 3000);
+            tailoringPollers.set(String(jobId), setInterval(poll, 3000));
         },
 
         showError: (msg) => {
-            if (window.udLoadingInterval) clearInterval(window.udLoadingInterval);
-            if (window.udSaveInterval) clearInterval(window.udSaveInterval);
+            if (loadingInterval) clearInterval(loadingInterval);
+            if (saveInterval) clearInterval(saveInterval);
 
-            document.getElementById('ud-status').style.display = 'flex';
-            document.getElementById('ud-status').innerHTML = `
+            panel.querySelector('#ud-status').style.display = 'flex';
+            panel.querySelector('#ud-status').innerHTML = `
                 <div style="text-align:center; padding:20px; color:#ef4444;">
                     <div style="font-size:40px; margin-bottom:10px;">❌</div>
                     <div>Error: ${msg}</div>
                 </div>
             `;
-            document.getElementById('ud-result').style.display = 'none';
+            panel.querySelector('#ud-result').style.display = 'none';
         },
 
         close: closePanel

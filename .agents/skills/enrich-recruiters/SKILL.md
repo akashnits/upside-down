@@ -32,19 +32,18 @@ Source a small, accurate set of in-house recruiters for existing job records and
    - Accept only: AnyMail `email_status=valid` plus `valid_email`; Prospeo `error=false`, verified/revealed email; LeadMagic `status=valid` plus email. Reject personal, ambiguous, invalid, or company-mismatched results.
    - Report only accepted email, provider, and `verified`/`not found`/`provider unavailable` status. Keep raw provider responses in memory only.
 
-4. Create or refresh `recruiter-results-<job-id>.md` in the workspace. Put each recruiter's full name and raw LinkedIn URL first, then role, evidence, email, provider, and status. Include the Notion database name, the selected job ID, the one row processed, and any gaps.
-
-5. Synchronize Notion after enrichment.
+4. Synchronize Notion immediately after enrichment. This is a mandatory completion gate; do not return an intermediate result or report success before the write and verification finish.
    - If no verified email is found, leave `Email` unchanged.
    - If one or more verified emails are found, replace `Email` with every accepted address in recruiter-rank order, separated by `; ` (for example, `first@company.com; second@company.com`). Do not create or update a separate contacts field.
    - Fetch the selected page directly after writing to verify the saved `Email` value. Do not rely on an immediately repeated SQL query, which may be stale.
+   - If the update or verification fails, report enrichment as incomplete with the exact failure reason; never claim success based only on provider output.
 
 ## Compact invocation
 
-For “get contacts for job ID `<id>`” or equivalent: resolve only that exact `Upside Down` row, find up to two qualified contacts, apply Bengaluru priority, create `recruiter-results-<job-id>.md`, and automatically update `Email` with all verified addresses separated by `; `.
+For “get contacts for job ID `<id>`” or equivalent: resolve only that exact `Upside Down` row, find up to two qualified contacts, apply Bengaluru priority, and automatically update and verify `Email` with all verified addresses separated by `; ` before reporting completion.
 
 If the user does not provide a Job ID, ask for one. If the user supplies a contact count, location, database link, or output filename, use those values.
 
 ## Output rules
 
-Lead with coverage achieved. State the database used, selected job ID, one record processed, verified emails found, rows updated, and any gaps. Show direct LinkedIn URLs plainly in the Markdown file and identify non-local fallbacks. For genuine gaps, suggest only a focused next step such as authenticated LinkedIn access, broader location/role scope, or missing provider access.
+Lead with coverage achieved. State the database used, selected job ID, one record processed, verified emails found, rows updated, and any gaps. Include direct LinkedIn URLs in the response when useful, and identify non-local fallbacks. For genuine gaps, suggest only a focused next step such as authenticated LinkedIn access, broader location/role scope, or missing provider access.
