@@ -168,7 +168,10 @@ function normalizeRecruiterContacts(contacts, emails) {
     const name = contact.name.trim();
     if (!name) throw new Error(`Recruiter contact ${index + 1} name is empty`);
     const linkedinUrl = contact.linkedinUrl ? String(contact.linkedinUrl).trim() : null;
-    if (linkedinUrl && !/^https:\/\/(www\.)?linkedin\.com\/in\//i.test(linkedinUrl)) throw new Error(`Recruiter contact ${index + 1} LinkedIn URL is invalid`);
+    // LinkedIn serves profiles through both www.linkedin.com and two-letter
+    // regional hosts (for example, in.linkedin.com). Both identify the same
+    // public profile path and are safe to persist.
+    if (linkedinUrl && !/^https:\/\/(?:(?:www|[a-z]{2})\.)?linkedin\.com\/in\//i.test(linkedinUrl)) throw new Error(`Recruiter contact ${index + 1} LinkedIn URL is invalid`);
     return { name: name.substring(0, 120), email: email || null, status: String(contact.status || (email ? "verified" : "not found")).substring(0, 40), provider: contact.provider ? String(contact.provider).substring(0, 80) : null, linkedinUrl: linkedinUrl ? linkedinUrl.substring(0, 500) : null, location: contact.location ? String(contact.location).substring(0, 120) : null };
   });
 }

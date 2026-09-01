@@ -29,4 +29,8 @@ const contacts = context.normalizeRecruiterContacts([{ name: "Alice", email: "al
 assert.strictEqual(contacts[0].status, "verified");
 assert.strictEqual(contacts[0].provider, "AnyMail Finder");
 
+const regionalContacts = context.normalizeRecruiterContacts([{ name: "Teja", linkedinUrl: "https://in.linkedin.com/in/tejaparisineti" }], []);
+assert.strictEqual(regionalContacts[0].linkedinUrl, "https://in.linkedin.com/in/tejaparisineti");
+assert.throws(() => context.normalizeRecruiterContacts([{ name: "Alice", linkedinUrl: "https://evil.linkedin.com/in/alice" }], []), /LinkedIn URL is invalid/);
+
 console.log("recruiter email endpoint validation tests passed");
