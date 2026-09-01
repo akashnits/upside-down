@@ -11,6 +11,19 @@ const LOG_PATH = '/tmp/upside-down-codex-native-worker.log';
 const taskPath = process.argv[2];
 const statePath = process.argv[3];
 
+function loadLocalEnv() {
+    const envPath = path.join(PROJECT_ROOT, '.env.local');
+    let contents;
+    try { contents = fs.readFileSync(envPath, 'utf8'); } catch (_) { return {}; }
+    const values = {};
+    for (const line of contents.split(/\r?\n/)) {
+        const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+        if (!match || match[1].startsWith('NODE_')) continue;
+        values[match[1]] = match[2].replace(/^(['"])(.*)\1$/, '$2');
+    }
+    return values;
+}
+
 function log(message) { fs.appendFileSync(LOG_PATH, `${new Date().toISOString()} ${message}\n`); }
 function updateState(fields) {
     let state = {};
@@ -37,7 +50,11 @@ try {
 }
 
 log(`MESSAGE_RECEIVED jobId=${task.jobId} company=${task.company} role=${task.role}`);
-const codex = spawn(CODEX_BIN, ['app-server', '--stdio'], { cwd: PROJECT_ROOT, stdio: ['pipe', 'pipe', 'pipe'] });
+const codex = spawn(CODEX_BIN, ['app-server', '--stdio'], {
+    cwd: PROJECT_ROOT,
+    env: { ...process.env, ...loadLocalEnv() },
+    stdio: ['pipe', 'pipe', 'pipe']
+});
 let buffer = '';
 let threadId = null;
 function send(message) { codex.stdin.write(`${JSON.stringify(message)}\n`); }
