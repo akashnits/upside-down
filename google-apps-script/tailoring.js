@@ -1,6 +1,24 @@
 // tailoring.js — Signed task lifecycle for agent-executed resume tailoring
 
-const TAILORING_TASK_VERSION = 4;
+const TAILORING_TASK_VERSION = 7;
+
+function sanitizeJobUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const hashIndex = raw.indexOf("#");
+  const beforeHash = hashIndex === -1 ? raw : raw.substring(0, hashIndex);
+  const hash = hashIndex === -1 ? "" : raw.substring(hashIndex);
+  const queryIndex = beforeHash.indexOf("?");
+  if (queryIndex === -1) return beforeHash + hash;
+  const base = beforeHash.substring(0, queryIndex);
+  const query = beforeHash.substring(queryIndex + 1)
+    .split("&")
+    .filter(part => {
+      const encodedKey = part.split("=", 1)[0].replace(/\+/g, " ");
+      try { return !decodeURIComponent(encodedKey).toLowerCase().startsWith("utm_"); } catch (_err) { return true; }
+    });
+  return base + (query.length ? `?${query.join("&")}` : "") + hash;
+}
 
 function resolveJobId(data) {
   if (data && data.jobId) return String(data.jobId);
@@ -19,7 +37,8 @@ function buildTailoringTask(data) {
     jobId,
     company: data.company || "Unknown",
     role: data.role || "Unknown",
-    jobUrl: data.jobUrl || "",
+    jobUrl: sanitizeJobUrl(data.jobUrl),
+    applicationUrl: sanitizeJobUrl(data.applicationUrl),
     jobDescription: data.jobDescription || "",
     createdAt: new Date().toISOString(),
     status: "Tailoring",
@@ -101,7 +120,9 @@ function claimTailoringTask(data) {
       jobId: authorized.jobId,
       task: {
         ...task,
-        editableContent: getEditableResumeContent(),
+        // A later cycle refines the existing tailored draft; first runs still
+        // use the canonical Base Resume.
+        editableContent: getEditableResumeContent(entry.draftDocumentId || undefined),
       },
       outputName: task.constraints.outputName,
     };
@@ -141,7 +162,10 @@ function getTailoringStatus(data) {
     recruiters: entry.recruiterEmail,
     recruiterContacts: entry.recruiterContacts || [],
     outreachDraft: entry.outreachDraft,
+    outreachSubject: entry.outreachSubject,
     fitHighlights: entry.fitHighlights,
+    jobUrl: task.jobUrl || null,
+    applicationUrl: task.applicationUrl || null,
   };
 }
 
@@ -248,8 +272,9 @@ function saveRecruiterEmails(data) {
     if (!verified) throw lastReadError || new Error("Notion recruiter email read-back did not match");
     // Email has already been verified above. Persist only enrichment metadata so
     // this state update does not issue a redundant Email property write.
-    updateNotionPage(authorized.entry.pageId, { recruiterEnrichment: "completed", recruiterContacts, systemState: authorized.entry.systemState, systemStateBlockId: authorized.entry.systemStateBlockId });
-    return { jobId: authorized.jobId, recruiterEnrichment: "completed", recruiters: targetEmail || null, recruiterContacts };
+    const recruiterEnrichment = emails.length ? "completed" : "no_verified_email";
+    updateNotionPage(authorized.entry.pageId, { recruiterEnrichment, recruiterContacts, systemState: authorized.entry.systemState, systemStateBlockId: authorized.entry.systemStateBlockId });
+    return { jobId: authorized.jobId, recruiterEnrichment, recruiters: targetEmail || null, recruiterContacts };
   } finally { lock.releaseLock(); }
 }
 
@@ -259,7 +284,7 @@ function saveTailoringOutreach(data) {
   if (!outreach || typeof outreach !== "object" || Array.isArray(outreach)) {
     throw new Error("Outreach draft must be an object");
   }
-  if (typeof outreach.email !== "string" || !outreach.email.trim() || outreach.email.length > 1200) {
+  if (typeof outreach.email !== "string" || !outreach.email.trim() || outreach.email.length > 1600) {
     throw new Error("Outreach draft must include a concise email");
   }
   if (!Array.isArray(outreach.fitHighlights) || outreach.fitHighlights.length < 1 || outreach.fitHighlights.length > 3) {
@@ -269,12 +294,30 @@ function saveTailoringOutreach(data) {
   if (fitHighlights.length !== outreach.fitHighlights.length || fitHighlights.some(value => value.length > 80)) {
     throw new Error("Each fit highlight must be a non-empty phrase under 80 characters");
   }
+  const email = outreach.email.trim();
+  const task = authorized.entry.tailoringTask;
+  const jobLink = task.applicationUrl || task.jobUrl || "";
+  if (!/^Hi,\s*(?:\n|$)/i.test(email)) {
+    throw new Error("Outreach draft must begin with 'Hi,' without a name placeholder");
+  }
+  if (/\[\s*name\s*\]/i.test(email)) {
+    throw new Error("Outreach draft must not include a name placeholder");
+  }
+  if (!/\bFit highlights\b/i.test(email)) {
+    throw new Error("Outreach draft must include a Fit highlights section");
+  }
+  if (jobLink && !email.includes(jobLink)) {
+    throw new Error("Outreach draft must include the saved job link");
+  }
+  const outreachSubject = `Application for ${task.role || "the role"} at ${task.company || "the company"}`;
   updateNotionPage(authorized.entry.pageId, {
-    outreachDraft: outreach.email.trim(),
+    outreachDraft: email,
+    outreachSubject,
+    fitHighlights,
     systemState: authorized.entry.systemState,
     systemStateBlockId: authorized.entry.systemStateBlockId,
   });
-  return { jobId: authorized.jobId, outreachDraft: outreach.email.trim(), fitHighlights };
+  return { jobId: authorized.jobId, outreachSubject, outreachDraft: email, fitHighlights };
 }
 
 function normalizeTailoringPatch(patch) {
@@ -311,10 +354,10 @@ function normalizeTailoringPatch(patch) {
   };
 }
 
-function validatePatchAgainstBaseResume(patch) {
-  const baseSkills = getEditableResumeContent().skills;
-  if (patch.skills.length !== baseSkills.length) {
-    throw new Error(`Tailoring patch must preserve the Base Resume's ${baseSkills.length} Skills rows`);
+function validatePatchAgainstSourceResume(patch, documentId) {
+  const sourceSkills = getEditableResumeContent(documentId || undefined).skills;
+  if (patch.skills.length !== sourceSkills.length) {
+    throw new Error(`Tailoring patch must preserve the source resume's ${sourceSkills.length} Skills rows`);
   }
 }
 
@@ -327,8 +370,8 @@ function applyTailoringPatchForTask(data) {
     // Resolve once under the lock; this is both the authorization check and the
     // source of the current task/draft state used below.
     const authorized = getAuthorizedTailoringEntry(data);
-    validatePatchAgainstBaseResume(patch);
     const entry = authorized.entry;
+    validatePatchAgainstSourceResume(patch, entry.draftDocumentId);
     const rubric = entry.tailoringTask.rubric || entry.rubric;
     if (!rubric) throw new Error("No saved ATS rubric exists for this task");
 

@@ -163,6 +163,8 @@ function doPost(e) {
       // Persists the immutable task only. The server creates the Drive copy after it receives a patch.
       const analysis = data.analysis;
       data.jobId = resolveJobId(data);
+      data.jobUrl = sanitizeJobUrl(data.jobUrl);
+      data.applicationUrl = sanitizeJobUrl(data.applicationUrl);
 
       // Check if this Job ID already exists in Notion
       let existingEntry = null;
@@ -175,17 +177,25 @@ function doPost(e) {
       }
 
       data.tailoringTask = buildTailoringTask(data);
-      data.draftDocumentId = null;
       data.status = "Tailoring";
 
       if (existingEntry) {
-        // Do not create or replace a Drive document during task preparation.
+        // A re-tailoring cycle improves the same draft rather than making a
+        // fresh Base Resume copy. Clear only artifacts that must be regenerated.
+        data.draftFolderId = existingEntry.draftFolderId || null;
+        data.draftDocumentId = existingEntry.draftDocumentId || null;
+        data.outreachDraft = null;
+        data.outreachSubject = null;
+        data.fitHighlights = [];
+        data.recruiterEnrichment = "pending";
+        data.recruiterContacts = [];
         data.systemState = existingEntry.systemState;
         data.systemStateBlockId = existingEntry.systemStateBlockId;
         updateNotionPage(existingEntry.pageId, data);
         Logger.log(`[INFO] Updated existing Notion entry: ${existingEntry.pageId}`);
       } else {
         // Save the task record before the agent creates the job-folder draft.
+        data.draftDocumentId = null;
         saveToNotion(data);
         Logger.log(`[INFO] Saved new Notion entry`);
       }

@@ -36,6 +36,43 @@ function scrapeJob() {
         return aboutJob?.id.match(/JobDetails_AboutTheJob_(\d+)/)?.[1] || `UD-${Date.now()}`;
     };
 
+    const sanitizeJobUrl = (value) => {
+        try {
+            const url = new URL(value, window.location.href);
+            [...url.searchParams.keys()].forEach(key => {
+                if (key.toLowerCase().startsWith("utm_")) url.searchParams.delete(key);
+            });
+            return url.href;
+        } catch (_error) {
+            return value || "";
+        }
+    };
+
+    const getApplicationUrl = () => {
+        const applyLink = [
+            ...document.querySelectorAll('a.jobs-apply-button[href], a[data-live-test-job-apply-button][href], a[href]')
+        ].find(link => /^(apply|apply now)$/i.test(cleanText(link.innerText || link.textContent)));
+        if (!applyLink) return "";
+
+        const isLinkedInHost = hostname => hostname === "linkedin.com" || hostname.endsWith(".linkedin.com");
+
+        try {
+            const href = new URL(applyLink.href, window.location.href);
+            // LinkedIn occasionally wraps an external application URL in a redirect.
+            // Preserve the employer destination when it is available, otherwise keep
+            // the LinkedIn URL as the safe fallback.
+            const redirectedUrl = href.searchParams.get("url");
+            if (redirectedUrl) {
+                const destination = new URL(redirectedUrl);
+                if (destination.protocol === "https:" && !isLinkedInHost(destination.hostname)) return sanitizeJobUrl(destination.href);
+            }
+            if (href.protocol === "https:" && !isLinkedInHost(href.hostname)) return sanitizeJobUrl(href.href);
+        } catch (_error) {
+            // A malformed or non-web Apply link is not useful in an outreach email.
+        }
+        return "";
+    };
+
     const titleData = parseTitle();
 
     return {
@@ -43,7 +80,8 @@ function scrapeJob() {
         company: titleData.company || "Unknown Company",
         jobDescription: getJobDescription(),
 
-        jobUrl: window.location.href,
+        jobUrl: sanitizeJobUrl(window.location.href),
+        applicationUrl: getApplicationUrl(),
         jobId: getJobId(),
         source: "linkedin-current-dom"
     };

@@ -10,7 +10,7 @@ Source a small, accurate set of in-house recruiters for existing job records and
 ## Defaults and boundaries
 
 - If the user gives no database, resolve the exact Notion database named `Upside Down`; never silently substitute `Applications` or another similarly named database.
-- Require one exact Notion `Job ID` and process only that matching job record. Never fall back to the latest records, a title match, or a company match. Default to up to two contacts for that job and locality priority Bengaluru, then India, then the job's stated location.
+- Require one exact Notion `Job ID` and process only that matching job record. Never fall back to the latest records, a title match, or a company match. Default to up to four contacts for that job and locality priority Bengaluru, then India, then the job's stated location. The target is at least one verified email, not simply a fixed number of profiles.
 - Require a current employer, recruiting evidence, and an exact direct LinkedIn profile URL surfaced by current public research. Never invent a profile URL.
 - Exclude former employees, agencies, unrelated HR, and senior/global/operations leaders used only to fill a quota. Do not use hiring managers unless the user allows it.
 - When at least one verified email is found, automatically update only the selected Notion row's `Email` rich-text property. Save every verified email in rank order, separated by `; `. Never send outreach, add properties, or modify unrelated rows.
@@ -26,7 +26,7 @@ Source a small, accurate set of in-house recruiters for existing job records and
    - Put up to four employer queries in one web call and run another batch only when needed. Use the current search-result snippet as evidence; open an individual profile only if the snippet is ambiguous.
    - A profile open is an optional evidence-deepening step, never a prerequisite when the search result already provides an exact direct LinkedIn URL, current employer/recruiting evidence, and location. If an open returns `aborted`, retry it up to two times; if it still aborts, mark profile inspection unavailable and continue with the sufficient search-result evidence. Do not pause provider enrichment or tracker synchronization for this optional step.
    - Stop only when a required field (direct profile URL, current employer/recruiting evidence, or location) is missing or contradictory. In that case, run a focused replacement search before stopping.
-   - Dedupe and keep at most the requested contact count per job. Record the direct profile URL, current title/evidence, employer, and location.
+- Dedupe and keep up to four of the most relevant contacts per job (or the requested count). Research and enrich all selected contacts before concluding that no verified email is available. Record the direct profile URL, current title/evidence, employer, and location.
 
 3. Enrich emails with the bundled runner.
    - Before checking provider credentials or running the runner, load the repository-root `.env.local` when it exists so its values are exported to the runner process, without printing values:
@@ -48,7 +48,7 @@ Source a small, accurate set of in-house recruiters for existing job records and
      The JSON file must contain `{ "emails": ["..."], "contacts": [{ "name": "...", "email": "...", "status": "verified", "provider": "...", "linkedinUrl": "...", "location": "..." }] }`. Include contacts for not-found results too, with no email and `status: "not found"`.
    - Treat a successful endpoint response as the synchronization and verification result. Do not perform a second Notion update through the connector.
    - If no endpoint is available, use the direct Notion flow below with its retry and read-back requirements.
-   - If no verified email is found, leave `Email` unchanged.
+- If no verified email is found after the selected four-person search and provider waterfall, leave `Email` unchanged and submit the not-found contacts so the tracker records `no_verified_email` rather than falsely reporting success.
    - If one or more verified emails are found, replace `Email` with every accepted address in recruiter-rank order, separated by `; ` (for example, `first@company.com; second@company.com`). Do not create or update a separate contacts field.
    - On a transient connector failure, including an `aborted` result, retry the identical `Email` update up to two times. Do not repeat recruiter research or email-provider calls: reuse the verified addresses already found.
    - After a successful write, fetch the selected page directly and verify that its `Email` value exactly equals the normalized, semicolon-separated addresses submitted. Do not rely on an immediately repeated SQL query, which may be stale.
@@ -57,7 +57,7 @@ Source a small, accurate set of in-house recruiters for existing job records and
 
 ## Compact invocation
 
-For “get contacts for job ID `<id>`” or equivalent: resolve only that exact `Upside Down` row, find up to two qualified contacts, apply Bengaluru priority, and automatically update and verify `Email` with all verified addresses separated by `; ` before reporting completion.
+For “get contacts for job ID `<id>`” or equivalent: resolve only that exact `Upside Down` row, find up to four qualified contacts, apply Bengaluru priority, and automatically update and verify `Email` with all verified addresses separated by `; ` before reporting completion. Aim to return at least one verified email; if provider coverage prevents that, report the explicit no-verified-email result.
 
 If the user does not provide a Job ID, ask for one. If the user supplies a contact count, location, database link, or output filename, use those values.
 

@@ -80,19 +80,39 @@ Only stop and report the error if the permission-backed retry also fails.
    ```
 
 6. After `apply` succeeds, draft a concise, evidence-backed cold email using
-   the finalized resume and JD. Lead with the most relevant role-specific
-   experience, not generic total years of experience. Connect one concrete,
-   verified achievement or capability to the JD's most important requirement.
-   Keep it under 70 words before the sign-off and PS, include 1-3 short fit
-   highlights, and end with a separate PS asking the recipient to forward you
-   to the right person if they are not the recruiter for the role. Format it
-   as plain text with blank lines between greeting, body, sign-off, and PS;
-   do not use markdown bullets or a subject line. Save it as
+   the finalized resume and JD. The backend derives the subject exactly as
+   `Application for <Role> at <Company>`; do not provide a subject in the
+   payload. Use this exact structure, replacing only the placeholders:
+
+   ```text
+   Hi,
+
+   I’m applying for the <Role> role at <Company>. I believe my background in <relevant capabilities> aligns well with what you’re looking for in this role, particularly around <priority from the job description>.
+
+   Fit highlights
+   - <Relevant technology or domain 1>
+   - <Relevant technology or domain 2>
+   - <Relevant technology or domain 3>
+
+   Job link: <task.applicationUrl, otherwise task.jobUrl>
+
+   Best,
+   Akash
+
+   P.S. If you’re not the right person for this role, I’d appreciate it if you could point me to the appropriate recruiter.
+   ```
+
+   Keep the fit statement high-level and recruiter-readable: signal relevant
+   capabilities and alignment, without arguing the full case or filling the
+   paragraph with a technical list. Use 1–3 fit-highlight bullets containing
+   only concise, relevant technologies or domains—not explanations, achievements,
+   or full sentences. For example: `Agentic AI`, `Kafka`, `Distributed systems`.
+   Save it as
    `/tmp/<jobId>-outreach.json`:
 
    ```json
    {
-     "email": "Hi [Name],\n\nI’m interested ...\n\nBest,\nAkash\n\nP.S. If you’re not the recruiter ...",
+    "email": "Hi,\n\nI’m applying for the <Role> role at <Company>. I believe my background in <relevant capabilities> aligns well with what you’re looking for in this role, particularly around <priority from the job description>.\n\nFit highlights\n- <match 1>\n- <match 2>\n\nJob link: <task.applicationUrl or task.jobUrl>\n\nBest,\nAkash\n\nP.S. If you’re not the right person for this role, I’d appreciate it if you could point me to the appropriate recruiter.",
      "fitHighlights": ["distributed systems", "Kafka platforms", "AWS backend"]
    }
    ```

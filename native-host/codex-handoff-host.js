@@ -85,12 +85,13 @@ function startForegroundTailoring(taskReference) {
     fs.mkdirSync(TASK_DIR, { recursive: true, mode: 0o700 });
     const { statePath } = pathsFor(taskReference.jobId);
     const previous = readState(statePath);
-    if (previous?.status === 'foreground') {
-        return { success: true, alreadyStarted: true, foreground: true };
-    }
     if (previous && ['started', 'running'].includes(previous.status) && isProcessAlive(previous.pid)) {
         return { success: false, error: 'This tailoring task is already running in the background. Wait for it to finish before starting a foreground session.' };
     }
+
+    // A foreground run is launched in Terminal and has no child PID that this
+    // native host can reliably observe. Its old marker must therefore never
+    // prevent a deliberate re-tailoring cycle for the same job.
 
     const promptPath = path.join(TASK_DIR, `${taskReference.jobId}.foreground-prompt.txt`);
     fs.writeFileSync(promptPath, buildTailoringPrompt(taskReference), { encoding: 'utf8', mode: 0o600 });

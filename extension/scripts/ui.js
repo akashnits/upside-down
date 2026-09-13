@@ -10,6 +10,37 @@ function escapeHtml(value) {
         .replace(/'/g, '&#039;');
 }
 
+async function copyPlainText(button, value) {
+    const originalIcon = button.textContent;
+    try {
+        await navigator.clipboard.writeText(value);
+    } catch (_error) {
+        const textarea = document.createElement('textarea');
+        textarea.value = value;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        textarea.remove();
+    }
+    button.textContent = '✓';
+    button.title = 'Copied';
+    setTimeout(() => {
+        button.textContent = originalIcon;
+        button.title = 'Copy email body';
+    }, 1400);
+}
+
+function safeHttpUrl(value) {
+    try {
+        const url = new URL(String(value || ''));
+        return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null;
+    } catch (_error) {
+        return null;
+    }
+}
+
 // Each tailoring job owns its polling timer. This allows multiple jobs to run
 // and report status concurrently instead of sharing one global interval.
 const tailoringPollers = new Map();
@@ -294,16 +325,17 @@ function createPanel() {
             if (previousPoller) clearInterval(previousPoller);
             const poll = () => chrome.runtime.sendMessage({ action: 'getTailoringStatus', payload: { jobId } }, response => {
                 if (!response?.success) return;
+                const enrichmentFinished = response.recruiterEnrichment === 'completed' || response.recruiterEnrichment === 'no_verified_email';
                 const done = (response.status === 'To Review' || response.status === 'Completed')
                     && Boolean(response.outreachDraft)
-                    && response.recruiterEnrichment === 'completed';
+                    && enrichmentFinished;
                 const result = panel.querySelector('#ud-result');
                 if (!result) return;
                 const waitingForRecruiters = !done
                     && (response.status === 'To Review' || response.status === 'Completed')
-                    && response.recruiterEnrichment !== 'completed';
+                    && !enrichmentFinished;
                 const status = done
-                    ? `Tailoring complete. ATS score: ${response.atsScore ?? 'n/a'}`
+                    ? `Tailoring complete. ATS score: ${response.atsScore ?? 'n/a'}${response.recruiterEnrichment === 'no_verified_email' ? ' · no verified recruiter email found' : ''}`
                     : `Tailoring status: ${response.status}${waitingForRecruiters ? ' · waiting for recruiter enrichment' : ''}`;
                 const link = response.documentUrl ? ` <a href="${response.documentUrl}" target="_blank">Open resume</a>` : '';
                 result.querySelector('[data-ud-tailoring-status]')?.replaceChildren(document.createTextNode(status));
@@ -323,10 +355,18 @@ function createPanel() {
                             const profile = contact.linkedinUrl ? ` <a href="${escapeHtml(contact.linkedinUrl)}" target="_blank" rel="noopener">LinkedIn</a>` : '';
                             return `<div style="margin-top:5px;"><b>${name}</b><br>${email}${profile}</div>`;
                         }).join('')
-                        : (response.recruiters ? escapeHtml(response.recruiters) : 'Enrichment completed; no verified recruiter email found');
+                        : (response.recruiters ? escapeHtml(response.recruiters) : 'No verified recruiter email found after enrichment');
                     const details = result.querySelector('[data-ud-tailoring-details]');
-                    const outreach = response.outreachDraft ? `<div><b>Cold email</b><div style="white-space:pre-wrap; margin-top:5px; padding:10px; background:#f8f9fa; border-left:3px solid #0A66C2;">${response.outreachDraft}</div></div>` : '';
+                    const subject = response.outreachSubject ? `<div style="margin-bottom:5px; font-weight:600;">${escapeHtml(response.outreachSubject)}</div>` : '';
+                    const jobLink = safeHttpUrl(response.applicationUrl || response.jobUrl);
+                    const escapedJobLink = jobLink ? escapeHtml(jobLink) : '';
+                    const linkedEmail = jobLink
+                        ? escapeHtml(response.outreachDraft).replace(escapedJobLink, `<a href="${escapedJobLink}" target="_blank" rel="noopener">${escapedJobLink}</a>`)
+                        : escapeHtml(response.outreachDraft);
+                    const outreach = response.outreachDraft ? `<div><div style="display:flex; align-items:center; justify-content:space-between;"><b>Cold email</b><button type="button" data-ud-copy-outreach title="Copy email body" aria-label="Copy email body" style="border:0; background:transparent; cursor:pointer; padding:2px 5px; font-size:16px; line-height:1;">⧉</button></div>${subject}<div style="white-space:pre-wrap; margin-top:5px; padding:10px; border:1px solid #e5e7eb; border-radius:4px; color:#111827;">${linkedEmail}</div></div>` : '';
                     if (details) details.innerHTML = `<div><b>ATS improvement</b><br>${delta}</div><div><b>What changed</b><br>${changes}</div>${outreach}<div><b>Recruiter enrichment</b><br>${recruiters}</div>`;
+                    const copyButton = details?.querySelector('[data-ud-copy-outreach]');
+                    if (copyButton) copyButton.addEventListener('click', () => copyPlainText(copyButton, response.outreachDraft));
                 }
                 if (done) {
                     clearInterval(tailoringPollers.get(String(jobId)));

@@ -198,6 +198,9 @@ function buildSystemState(existingState, data) {
   if (Object.prototype.hasOwnProperty.call(data, "outreachDraft")) {
     state.outreachDraft = data.outreachDraft;
   }
+  if (Object.prototype.hasOwnProperty.call(data, "outreachSubject")) {
+    state.outreachSubject = data.outreachSubject;
+  }
   if (Object.prototype.hasOwnProperty.call(data, "fitHighlights")) {
     state.fitHighlights = data.fitHighlights;
   }
@@ -316,6 +319,7 @@ function findNotionEntry(jobId) {
     draftFolderId: systemState.draftFolderId || null,
     draftDocumentId: systemState.draftDocumentId || null,
     outreachDraft: systemState.outreachDraft || null,
+    outreachSubject: systemState.outreachSubject || null,
     fitHighlights: systemState.fitHighlights || [],
     recruiterEnrichment: systemState.recruiterEnrichment || null,
     recruiterContacts: systemState.recruiterContacts || [],
@@ -358,7 +362,7 @@ function saveToNotion(data, isRetry = false) {
     "Name": { title: [{ text: { content: `${data.company || "Unknown"} - ${data.role || "Unknown"}` } }] },
     "Company": buildNotionRichTextProperty(data.company || "Unknown"),
     "Role": buildNotionRichTextProperty(data.role || "Unknown"),
-    "Job Link": { url: data.jobUrl || null },
+    "Job Link": { url: data.applicationUrl || data.jobUrl || null },
     "Job ID": buildNotionRichTextProperty(data.jobId || "Unknown"),
   }, buildTrackerProperties(data));
 
