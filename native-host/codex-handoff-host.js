@@ -78,7 +78,10 @@ function openTailoringSession(jobId) {
 }
 
 function buildTailoringPrompt(task) {
-    return `Use the checked-in project skill at .agents/skills/resume-tailor/SKILL.md to execute this tailoring task; do not use a globally installed resume-tailor skill. Do not create a resume draft before invoking the skill. The skill will fetch the task and submit only a Summary/Skills patch. The backend will copy the canonical base resume into the job folder, apply and verify the patch, then rescore and update Notion. After apply succeeds, follow the skill instructions to draft and save the concise evidence-backed outreach email before running enrich-recruiters. Then run enrich-recruiters with this exact saved Job ID: ${task.jobId}.\n\nTask reference:\n${JSON.stringify({ company: task.company, role: task.role, endpoint: task.agentEndpoint, jobId: task.jobId }, null, 2)}`;
+    const hiringManagerInstruction = task.findHiringManager
+        ? 'Then run enrich-recruiters with the optional confirmed hiring-manager lookup enabled. Use its strict two-search, public-evidence cap; do not enrich a manager without direct hiring evidence for this role.'
+        : 'Then run enrich-recruiters.';
+    return `Use the checked-in project skill at .agents/skills/resume-tailor/SKILL.md to execute this tailoring task; do not use a globally installed resume-tailor skill. Do not create a resume draft before invoking the skill. The skill will fetch the task and submit only a Summary/Skills patch. The backend will copy the canonical base resume into the job folder, apply and verify the patch, then rescore and update Notion. After apply succeeds, follow the skill instructions to draft and save the concise evidence-backed outreach email before running enrich-recruiters. ${hiringManagerInstruction} Use this exact saved Job ID: ${task.jobId}.\n\nTask reference:\n${JSON.stringify({ company: task.company, role: task.role, endpoint: task.agentEndpoint, jobId: task.jobId, findHiringManager: task.findHiringManager === true }, null, 2)}`;
 }
 
 function startForegroundTailoring(taskReference) {
@@ -136,6 +139,7 @@ function validateTaskReference(task) {
     for (const field of ['company', 'role', 'agentEndpoint', 'jobId']) {
         if (typeof task[field] !== 'string' || !task[field].trim()) throw new Error(`Missing task field: ${field}`);
     }
+    if (task.findHiringManager !== undefined && typeof task.findHiringManager !== 'boolean') throw new Error('Invalid hiring-manager option');
     if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(task.agentEndpoint)) throw new Error('Invalid agent endpoint');
     if (!/^[0-9]+$/.test(task.jobId)) throw new Error('Invalid job ID');
 }

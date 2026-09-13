@@ -249,6 +249,10 @@ function createPanel() {
             result.innerHTML = `
                 ${renderAnalysisScan(analysis)}
                 <div style="font-size:12px; color:#6b7280; margin:-4px 0 16px;">Your confirmed experience and tailoring brief will be sent to Codex.</div>
+                <label style="display:flex; align-items:flex-start; gap:8px; margin:-4px 0 16px; color:#374151; font-size:12px; line-height:1.4; cursor:pointer;">
+                    <input id="ud-find-hiring-manager" type="checkbox" checked style="margin:2px 0 0; accent-color:#0A66C2;">
+                    <span><strong>Find confirmed hiring manager</strong><br>Optional: uses at most two public searches and only enriches an email when a recent hiring signal directly matches this role.</span>
+                </label>
                 <div style="display:flex; gap:10px; padding-bottom:20px;">
                     <button id="ud-save" style="flex:1; background:#0A66C2; color:white; border:none; padding:12px; border-radius:8px; cursor:pointer; font-weight:600; font-size:14px; transition:background 0.2s;"
                         onmouseover="this.style.background='#084e96'" onmouseout="this.style.background='#0A66C2'">Tailor &amp; save</button>
@@ -269,8 +273,9 @@ function createPanel() {
                 const literalizeKeywords = literalizationInputs
                     .filter(input => input.checked)
                     .map(input => input.value);
+                const findHiringManager = panel.querySelector('#ud-find-hiring-manager')?.checked === true;
 
-                onSave({ confirmedKeywords, excludedKeywords, literalizeKeywords });
+                onSave({ confirmedKeywords, excludedKeywords, literalizeKeywords, findHiringManager });
             };
             panel.querySelector('#ud-discard').onclick = closePanel;
         },

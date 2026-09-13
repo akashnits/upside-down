@@ -1,6 +1,6 @@
 ---
 name: enrich-recruiters
-description: "Find current, role-relevant recruiters for tracked Notion job records and enrich them with verified work emails, prioritizing Bengaluru. Use for recruiter contacts, not candidate sourcing or outreach."
+description: "Find current, role-relevant recruiters for tracked Notion job records and enrich them with verified work emails, with an optional strictly confirmed hiring-manager lookup."
 ---
 
 # Enrich Recruiters
@@ -12,7 +12,7 @@ Source a small, accurate set of in-house recruiters for existing job records and
 - If the user gives no database, resolve the exact Notion database named `Upside Down`; never silently substitute `Applications` or another similarly named database.
 - Require one exact Notion `Job ID` and process only that matching job record. Never fall back to the latest records, a title match, or a company match. Default to up to four contacts for that job and locality priority Bengaluru, then India, then the job's stated location. The target is at least one verified email, not simply a fixed number of profiles.
 - Require a current employer, recruiting evidence, and an exact direct LinkedIn profile URL surfaced by current public research. Never invent a profile URL.
-- Exclude former employees, agencies, unrelated HR, and senior/global/operations leaders used only to fill a quota. Do not use hiring managers unless the user allows it.
+- Exclude former employees, agencies, unrelated HR, and senior/global/operations leaders used only to fill a quota. Do not use hiring managers unless the caller explicitly enables the optional confirmed-hiring-manager lookup.
 - When at least one verified email is found, automatically update only the selected Notion row's `Email` rich-text property. Save every verified email in rank order, separated by `; `. Never send outreach, add properties, or modify unrelated rows.
 
 ## Fast workflow
@@ -27,6 +27,16 @@ Source a small, accurate set of in-house recruiters for existing job records and
    - A profile open is an optional evidence-deepening step, never a prerequisite when the search result already provides an exact direct LinkedIn URL, current employer/recruiting evidence, and location. If an open returns `aborted`, retry it up to two times; if it still aborts, mark profile inspection unavailable and continue with the sufficient search-result evidence. Do not pause provider enrichment or tracker synchronization for this optional step.
    - Stop only when a required field (direct profile URL, current employer/recruiting evidence, or location) is missing or contradictory. In that case, run a focused replacement search before stopping.
 - Dedupe and keep up to four of the most relevant contacts per job (or the requested count). Research and enrich all selected contacts before concluding that no verified email is available. Record the direct profile URL, current title/evidence, employer, and location.
+
+### Optional confirmed hiring-manager lookup
+
+Run this only when the caller explicitly requests it (for example, the task reference includes `findHiringManager: true`). It is an opportunistic addition to recruiter enrichment, never a broad manager search.
+
+- Use at most two public, high-signal searches: one targeted at direct LinkedIn posts and one at profiles. For example: `site:linkedin.com/posts "<Company>" "<Role>" hiring` and `site:linkedin.com/in "<Company>" "<Role>" hiring`.
+- Stop immediately after one confirmed match. Do not open or browse general LinkedIn activity when the search snippet has no role-specific hiring signal.
+- Accept a manager only when public evidence shows all of: current employment at the company; plausible responsibility for the relevant team; and a recent direct hiring statement that matches the role, team, or location. A senior title alone is never enough.
+- Only after that evidence threshold is met, send that one manager through the existing verified-email provider waterfall. Do not guess an address or enrich a merely likely manager.
+- If neither search provides direct evidence, report `No publicly confirmed hiring manager found` and continue/complete normal recruiter enrichment without further manager research. Keep the entire optional lookup bounded to two searches and roughly one minute.
 
 3. Enrich emails with the bundled runner.
    - Before checking provider credentials or running the runner, load the repository-root `.env.local` when it exists so its values are exported to the runner process, without printing values:

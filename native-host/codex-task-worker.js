@@ -36,7 +36,10 @@ function fail(error) {
     codex?.kill('SIGTERM');
 }
 function buildPrompt(task) {
-    return `Use the resume-tailor skill to execute this tailoring task. Do not create a resume draft before invoking the skill. The skill will fetch the task and submit only a Summary/Skills patch. The backend will copy the canonical base resume into the job folder, apply and verify the patch, then rescore and update Notion. After apply succeeds, follow the skill instructions to draft and save the concise evidence-backed outreach email before running enrich-recruiters. Then run enrich-recruiters with this exact saved Job ID: ${task.jobId}.\n\nTask reference:\n${JSON.stringify({ company: task.company, role: task.role, endpoint: task.agentEndpoint, jobId: task.jobId }, null, 2)}`;
+    const hiringManagerInstruction = task.findHiringManager
+        ? 'Then run enrich-recruiters with the optional confirmed hiring-manager lookup enabled. Use its strict two-search, public-evidence cap; do not enrich a manager without direct hiring evidence for this role.'
+        : 'Then run enrich-recruiters.';
+    return `Use the resume-tailor skill to execute this tailoring task. Do not create a resume draft before invoking the skill. The skill will fetch the task and submit only a Summary/Skills patch. The backend will copy the canonical base resume into the job folder, apply and verify the patch, then rescore and update Notion. After apply succeeds, follow the skill instructions to draft and save the concise evidence-backed outreach email before running enrich-recruiters. ${hiringManagerInstruction} Use this exact saved Job ID: ${task.jobId}.\n\nTask reference:\n${JSON.stringify({ company: task.company, role: task.role, endpoint: task.agentEndpoint, jobId: task.jobId, findHiringManager: task.findHiringManager === true }, null, 2)}`;
 }
 
 let task;

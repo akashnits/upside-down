@@ -79,6 +79,7 @@
                                 role: saveResponse.role,
                                 agentEndpoint: saveResponse.agentEndpoint,
                                 jobId: saveResponse.jobId,
+                                findHiringManager: userSelections.findHiringManager === true,
                             }
                         }, tailoringResponse => {
                             if (chrome.runtime.lastError || !tailoringResponse?.success) {
