@@ -1,6 +1,6 @@
 // tailoring.js — Signed task lifecycle for agent-executed resume tailoring
 
-const TAILORING_TASK_VERSION = 7;
+const TAILORING_TASK_VERSION = 8;
 
 function sanitizeJobUrl(value) {
   const raw = String(value || "").trim();
@@ -40,6 +40,7 @@ function buildTailoringTask(data) {
     jobUrl: sanitizeJobUrl(data.jobUrl),
     applicationUrl: sanitizeJobUrl(data.applicationUrl),
     jobDescription: data.jobDescription || "",
+    draftToken: Utilities.getUuid(),
     createdAt: new Date().toISOString(),
     status: "Tailoring",
     rubric: analysis.rubric || null,
@@ -164,6 +165,7 @@ function getTailoringStatus(data) {
     outreachDraft: entry.outreachDraft,
     outreachSubject: entry.outreachSubject,
     fitHighlights: entry.fitHighlights,
+    gmailDraft: entry.gmailDraft,
     jobUrl: task.jobUrl || null,
     applicationUrl: task.applicationUrl || null,
   };
@@ -318,6 +320,40 @@ function saveTailoringOutreach(data) {
     systemStateBlockId: authorized.entry.systemStateBlockId,
   });
   return { jobId: authorized.jobId, outreachSubject, outreachDraft: email, fitHighlights };
+}
+
+function createOutreachGmailDraft(data) {
+  const authorized = getAuthorizedTailoringEntry(data);
+  const entry = authorized.entry;
+  const task = entry.tailoringTask;
+  if (typeof data.draftToken !== "string" || data.draftToken !== task.draftToken) {
+    throw new Error("Invalid draft authorization token");
+  }
+  if (!entry.outreachSubject || !entry.outreachDraft) {
+    throw new Error("Create the cold email before creating a Gmail draft");
+  }
+  if (entry.recruiterEnrichment !== "completed") {
+    throw new Error("Wait for verified contact enrichment before creating a Gmail draft");
+  }
+  const recipients = (entry.recruiterContacts || [])
+    .filter(contact => contact && contact.status === "verified" && typeof contact.email === "string")
+    .map(contact => contact.email.trim().toLowerCase())
+    .filter((email, index, emails) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) && emails.indexOf(email) === index);
+  if (!recipients.length) throw new Error("No verified recipients are available for a Gmail draft");
+  if (entry.gmailDraft && entry.gmailDraft.draftToken === task.draftToken) {
+    return { jobId: authorized.jobId, gmailDraft: entry.gmailDraft, alreadyCreated: true };
+  }
+  const draft = GmailApp.createDraft(recipients[0], entry.outreachSubject, entry.outreachDraft, recipients.length > 1 ? { bcc: recipients.slice(1).join(",") } : {});
+  const gmailDraft = { id: draft.getId(), to: recipients[0], bcc: recipients.slice(1), draftToken: task.draftToken, createdAt: new Date().toISOString() };
+  updateNotionPage(entry.pageId, { gmailDraft, systemState: entry.systemState, systemStateBlockId: entry.systemStateBlockId });
+  return { jobId: authorized.jobId, gmailDraft, alreadyCreated: false };
+}
+
+// Run once from the Apps Script editor after deployment to grant the Gmail
+// scope. Reading configured aliases does not create, alter, or send an email.
+function authorizeGmailDrafts() {
+  GmailApp.getAliases();
+  return { authorized: true };
 }
 
 function normalizeTailoringPatch(patch) {

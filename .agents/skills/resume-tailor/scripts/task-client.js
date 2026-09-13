@@ -6,10 +6,11 @@ const actions = {
   apply: "applyTailoringPatch",
   outreach: "saveTailoringOutreach",
   recruiters: "saveRecruiterEmails",
+  drafts: "createOutreachGmailDraft",
 };
 
-if (!actions[command] || !endpoint || !jobId || (["apply", "outreach", "recruiters"].includes(command) && !patchPath)) {
-  console.error("Usage: task-client.js <claim|apply|outreach|recruiters> <endpoint> <jobId> [filePath]");
+if (!actions[command] || !endpoint || !jobId || (["apply", "outreach", "recruiters", "drafts"].includes(command) && !patchPath)) {
+  console.error("Usage: task-client.js <claim|apply|outreach|recruiters|drafts> <endpoint> <jobId> [filePath|draftToken]");
   process.exit(1);
 }
 
@@ -30,7 +31,7 @@ async function run() {
     body: JSON.stringify({
       action: actions[command],
       jobId,
-      ...(command === "apply" ? { patch } : command === "outreach" ? { outreach: patch } : command === "recruiters" ? { emails: patch.emails, contacts: patch.contacts } : {}),
+      ...(command === "apply" ? { patch } : command === "outreach" ? { outreach: patch } : command === "recruiters" ? { emails: patch.emails, contacts: patch.contacts } : command === "drafts" ? { draftToken: patchPath } : {}),
     }),
   });
   const text = await response.text();

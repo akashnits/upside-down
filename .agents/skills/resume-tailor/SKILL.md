@@ -125,6 +125,10 @@ Only stop and report the error if the permission-backed retry also fails.
      "<endpoint>" "<jobId>" "/tmp/<jobId>-outreach.json"
    ```
 
+7. After verified-contact enrichment succeeds, use the `draft-outreach` skill
+   to create one Gmail draft. It must use `task.draftToken`, send to the first
+   verified contact, Bcc all other verified contacts, and never send the email.
+
 The `apply` response includes the finalized Google Doc URL and ATS score. The backend
 verifies the submitted Summary and Skills against the copied Base Resume,
 re-scores it with the saved rubric, and updates Notion.

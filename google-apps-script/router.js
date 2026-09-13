@@ -189,6 +189,7 @@ function doPost(e) {
         data.fitHighlights = [];
         data.recruiterEnrichment = "pending";
         data.recruiterContacts = [];
+        data.gmailDraft = null;
         data.systemState = existingEntry.systemState;
         data.systemStateBlockId = existingEntry.systemStateBlockId;
         updateNotionPage(existingEntry.pageId, data);
@@ -221,6 +222,7 @@ function doPost(e) {
         role: data.role || "Unknown",
         jobId: data.jobId,
         agentEndpoint: getCurrentWebAppUrl(),
+        draftToken: data.tailoringTask.draftToken,
       };
       cacheResponse("save", requestId, response);
       return jsonOutput(response);
@@ -241,6 +243,10 @@ function doPost(e) {
 
     if (action === "saveRecruiterEmails") {
       return jsonOutput({ success: true, ...saveRecruiterEmails(data) });
+    }
+
+    if (action === "createOutreachGmailDraft") {
+      return jsonOutput({ success: true, ...createOutreachGmailDraft(data) });
     }
 
     // --- AGENT ACTION: COPY BASE, APPLY PATCH, VERIFY, RESCORE, AND PERSIST ---

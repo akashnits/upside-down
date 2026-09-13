@@ -79,6 +79,7 @@
                                 role: saveResponse.role,
                                 agentEndpoint: saveResponse.agentEndpoint,
                                 jobId: saveResponse.jobId,
+                                draftToken: saveResponse.draftToken,
                                 findHiringManager: userSelections.findHiringManager === true,
                             }
                         }, tailoringResponse => {

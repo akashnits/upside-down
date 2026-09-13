@@ -204,6 +204,9 @@ function buildSystemState(existingState, data) {
   if (Object.prototype.hasOwnProperty.call(data, "fitHighlights")) {
     state.fitHighlights = data.fitHighlights;
   }
+  if (Object.prototype.hasOwnProperty.call(data, "gmailDraft")) {
+    state.gmailDraft = data.gmailDraft;
+  }
   if (Object.prototype.hasOwnProperty.call(data, "recruiterEnrichment")) {
     state.recruiterEnrichment = data.recruiterEnrichment;
   }
@@ -321,6 +324,7 @@ function findNotionEntry(jobId) {
     outreachDraft: systemState.outreachDraft || null,
     outreachSubject: systemState.outreachSubject || null,
     fitHighlights: systemState.fitHighlights || [],
+    gmailDraft: systemState.gmailDraft || null,
     recruiterEnrichment: systemState.recruiterEnrichment || null,
     recruiterContacts: systemState.recruiterContacts || [],
     systemState: hasSystemStateData(systemState) ? systemState : null,
