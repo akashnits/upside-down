@@ -22,10 +22,11 @@ SKILL_ROOT=".agents/skills/resume-tailor"
 Both lifecycle commands POST to the provided Apps Script endpoint. They require
 outbound network access from the agent sandbox.
 
-If either command reports `fetch failed`, do not treat it as a task failure and
-do not recreate the task. Request narrowly scoped network permission for that
-exact `node ... task-client.js` command, then retry the unchanged command once.
-Only stop and report the error if the permission-backed retry also fails.
+The task client automatically retries transient network failures and non-JSON
+Apps Script responses three times, using the identical request payload. Do not
+recreate the task after a transient failure. If the command still reports
+`fetch failed`, request narrowly scoped network permission for that exact
+`node ... task-client.js` command, then retry the unchanged command once.
 
 ## Task lifecycle
 
